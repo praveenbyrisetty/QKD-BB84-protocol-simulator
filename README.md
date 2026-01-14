@@ -1,4 +1,4 @@
-# ⚛️ Quantum BB84 Simulator
+# ⚛️ Quantum BB84 Protocol Simulator
 
 ![React](https://img.shields.io/badge/frontend-React_Vite-61DAFB.svg)
 ![Flask](https://img.shields.io/badge/backend-Flask_Python-000000.svg)
