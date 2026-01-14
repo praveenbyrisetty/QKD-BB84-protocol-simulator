@@ -1,0 +1,230 @@
+{
+  "protocol_info": {
+    "name": "BB84 Protocol",
+    "inventors": "Charles Bennett and Gilles Brassard",
+    "year": "1984",
+    "description": "The first quantum key distribution protocol that enables secure communication using quantum mechanical principles through photon polarization encoding"
+  },
+  "quantum_channel": {
+    "definition": "A communication channel that can transmit quantum information using individual photons while preserving quantum properties",
+    "characteristics": {
+      "photon_transmission": "Individual photons carry quantum bits (qubits) encoded in polarization states",
+      "quantum_properties": "Preserves superposition, entanglement, and maintains quantum coherence during transmission",
+      "physical_implementation": [
+        "Fiber optic cables",
+        "Free space transmission",
+        "Integrated photonic circuits"
+      ],
+      "transmission_range": "Up to 100+ km in standard fiber optics before losses dominate",
+      "security_basis": "Security derived from fundamental laws of quantum mechanics, not mathematical complexity"
+    },
+    "vs_classical_channel": {
+      "classical": "Transmits only classical bits (0s and 1s) through electrical or optical pulses",
+      "quantum": "Transmits quantum states including superpositions like |0\u27e9+|1\u27e9 while preserving coherence",
+      "information_capacity": "Quantum channels can carry both classical and quantum information simultaneously",
+      "eavesdropping_detection": "Classical channels cannot detect eavesdropping, quantum channels inherently reveal tampering"
+    }
+  },
+  "quantum_gates": {
+    "definition": "Mathematical operations that manipulate quantum states in controlled ways",
+    "bb84_gates": {
+      "hadamard_gate": {
+        "symbol": "H",
+        "function": "Creates superposition states and switches between computational bases",
+        "transformation": "|0\u27e9 \u2192 |+\u27e9 = (|0\u27e9+|1\u27e9)/\u221a2, |1\u27e9 \u2192 |-\u27e9 = (|0\u27e9-|1\u27e9)/\u221a2",
+        "role_in_bb84": "Switches between rectilinear (Z) and diagonal (X) bases for encoding/measuring"
+      },
+      "pauli_x_gate": {
+        "symbol": "X",
+        "function": "Bit-flip operation, rotates qubit state",
+        "transformation": "|0\u27e9 \u2192 |1\u27e9, |1\u27e9 \u2192 |0\u27e9",
+        "role_in_bb84": "Used for state preparation and bit encoding"
+      },
+      "identity_gate": {
+        "symbol": "I",
+        "function": "No operation, preserves quantum state",
+        "role_in_bb84": "Used when no basis transformation is needed"
+      }
+    },
+    "physical_implementation": {
+      "optical_gates": "Wave plates, polarizing beam splitters, phase modulators",
+      "gate_operations": "Polarization rotation, beam splitting, phase shifting",
+      "measurement": "Photon detectors that collapse quantum states to classical bits"
+    }
+  },
+  "polarization_encoding": {
+    "rectilinear_basis": {
+      "name": "Computational/Z-Basis",
+      "states": {
+        "horizontal": {
+          "symbol": "|0\u27e9",
+          "angle": "0\u00b0",
+          "bit": "0",
+          "polarization": "Horizontal"
+        },
+        "vertical": {
+          "symbol": "|1\u27e9",
+          "angle": "90\u00b0",
+          "bit": "1",
+          "polarization": "Vertical"
+        }
+      }
+    },
+    "diagonal_basis": {
+      "name": "Hadamard/X-Basis",
+      "states": {
+        "diagonal": {
+          "symbol": "|+\u27e9",
+          "angle": "45\u00b0",
+          "bit": "0",
+          "polarization": "Diagonal"
+        },
+        "anti_diagonal": {
+          "symbol": "|-\u27e9",
+          "angle": "135\u00b0",
+          "bit": "1",
+          "polarization": "Anti-diagonal"
+        }
+      }
+    },
+    "encoding_process": {
+      "step1": "Alice generates random bit (0 or 1)",
+      "step2": "Alice randomly selects basis (rectilinear or diagonal)",
+      "step3": "Photon polarized according to bit value and chosen basis",
+      "step4": "Polarized photon transmitted through quantum channel",
+      "step5": "Bob randomly chooses measurement basis",
+      "step6": "Photon detected and quantum state collapses to classical bit"
+    }
+  },
+  "rsa_vs_qkd_comparison": {
+    "security_foundation": {
+      "rsa": "Mathematical complexity - difficulty of factoring large integers",
+      "qkd": "Laws of physics - quantum mechanical principles like no-cloning theorem"
+    },
+    "key_distribution": {
+      "rsa": "Uses public/private key pairs, mathematical algorithms for key exchange",
+      "qkd": "Direct quantum transmission of shared secret keys using photon polarization"
+    },
+    "eavesdropping_detection": {
+      "rsa": "Cannot detect passive eavesdropping on key exchange",
+      "qkd": "Automatically detects any eavesdropping through quantum measurement disturbance"
+    },
+    "computational_security": {
+      "rsa": "Vulnerable to quantum computers using Shor's algorithm",
+      "qkd": "Quantum-safe - security increases with quantum computing advances"
+    },
+    "key_sizes": {
+      "rsa": "Variable key lengths (1024-4096 bits typically), larger keys for more security",
+      "qkd": "Uses one-time pad with key length equal to message length"
+    },
+    "implementation": {
+      "rsa": "Software-based, works on standard computer networks",
+      "qkd": "Requires specialized quantum hardware - photon sources, detectors, quantum channels"
+    },
+    "data_transmission_rates": {
+      "rsa": "High data rates possible with standard networking equipment",
+      "qkd": "Lower key generation rates due to quantum hardware limitations"
+    },
+    "distance_limitations": {
+      "rsa": "No distance limitations with standard networks",
+      "qkd": "Limited by photon loss in transmission medium (currently ~100-500km)"
+    },
+    "future_proofing": {
+      "rsa": "Will be broken by sufficiently large quantum computers",
+      "qkd": "Remains secure regardless of computational advances"
+    }
+  },
+  "protocol_steps": [
+    {
+      "step": 1,
+      "title": "Random Bit Generation",
+      "description": "Alice generates random bit stream and basis choices using quantum random number generators",
+      "technical_details": [
+        "Alice creates random bit string using QRNG (Quantum Random Number Generator)",
+        "Alice creates random basis string (0=rectilinear, 1=diagonal)",
+        "Each bit has 50% probability of being 0 or 1",
+        "Each basis choice is independent and random"
+      ]
+    },
+    {
+      "step": 2,
+      "title": "Quantum State Preparation & Encoding",
+      "description": "Alice encodes bits into photon polarization states using quantum gates",
+      "technical_details": [
+        "Photons prepared in specific polarization states using optical elements",
+        "Hadamard gates used to switch between rectilinear and diagonal bases",
+        "Pauli-X gates applied for bit-flip operations when needed",
+        "Single photons generated using parametric down-conversion or laser diodes"
+      ]
+    },
+    {
+      "step": 3,
+      "title": "Quantum Channel Transmission",
+      "description": "Encoded photons transmitted through quantum channel while preserving quantum properties",
+      "technical_details": [
+        "Individual photons travel through fiber optic or free-space quantum channels",
+        "Channel maintains quantum coherence and polarization states",
+        "Transmission losses and noise affect but don't compromise security",
+        "Channel may be insecure from classical perspective but quantum properties provide protection"
+      ]
+    },
+    {
+      "step": 4,
+      "title": "Random Quantum Measurement",
+      "description": "Bob randomly selects measurement basis and performs quantum measurement on received photons",
+      "technical_details": [
+        "Bob independently generates random basis choices",
+        "Quantum measurement performed using polarizing beam splitters and detectors",
+        "Measurement basis determines which quantum gate operations are applied",
+        "Correct result obtained only when measurement basis matches encoding basis (50% probability)"
+      ]
+    },
+    {
+      "step": 5,
+      "title": "Basis Reconciliation",
+      "description": "Alice and Bob compare basis choices over authenticated classical channel",
+      "technical_details": [
+        "Classical channel communication reveals basis choices but not bit values",
+        "Authentication prevents man-in-the-middle attacks on classical communication",
+        "Approximately 50% of transmitted bits discarded due to basis mismatch",
+        "Remaining bits form the 'sifted key' where bases matched"
+      ]
+    },
+    {
+      "step": 6,
+      "title": "Error Detection & Eavesdropping Check",
+      "description": "Statistical test performed on subset of sifted key to detect eavesdropping",
+      "technical_details": [
+        "Random sample of matching bits compared publicly",
+        "Error rate calculated from bit disagreements",
+        "Error threshold typically set at 11% (BB84 theoretical limit ~25%)",
+        "High error rate indicates eavesdropping attempt - protocol aborted"
+      ]
+    },
+    {
+      "step": 7,
+      "title": "Error Correction & Privacy Amplification",
+      "description": "Final key processing to correct errors and ensure security against partial information leakage",
+      "technical_details": [
+        "Classical error correction algorithms applied to remaining key bits",
+        "Privacy amplification reduces key length to eliminate eavesdropper information",
+        "Hash functions or other compression techniques used",
+        "Final secure key ready for use with one-time pad encryption"
+      ]
+    }
+  ],
+  "quantum_advantages": [
+    "Unconditional security based on fundamental physics laws",
+    "Automatic eavesdropping detection through quantum measurement disturbance",
+    "Future-proof against advances in classical and quantum computing",
+    "Information-theoretic security independent of computational assumptions",
+    "Simultaneous key distribution and security verification"
+  ],
+  "technical_challenges": [
+    "Photon loss limits transmission distance (currently ~500km)",
+    "Requires specialized and expensive quantum hardware",
+    "Lower key generation rates compared to classical methods",
+    "Susceptible to implementation vulnerabilities in real devices",
+    "Need for authenticated classical channel for basis reconciliation"
+  ]
+}

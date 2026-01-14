@@ -1,0 +1,12 @@
+# Dependency directories
+node_modules/
+venv/
+__pycache__/
+
+# Environment variables
+.env
+.DS_Store
+
+# Build outputs
+dist/
+build/

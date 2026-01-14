@@ -1,0 +1,28 @@
+.header{
+    color: #dfe5eb;
+    text-align: center;
+    margin-top: 20px;
+    font-family: 'Arial', sans-serif;
+    font-size: 5em;
+}
+
+.sub{
+    color: #dce5ee;
+    text-align: center;
+    margin-bottom: 40px;
+    font-family: 'Arial', sans-serif;
+    font-size: 2em;
+}
+
+.gallery{
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 40px;
+}
+
+.circuit{
+    height: 700px;
+    width: auto;
+    text-align: center;
+}

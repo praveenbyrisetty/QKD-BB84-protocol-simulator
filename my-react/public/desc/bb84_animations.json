@@ -1,0 +1,73 @@
+{
+  "photon_transmission": [
+    {
+      "time": 0,
+      "action": "alice_prepares",
+      "description": "Alice prepares photon in chosen polarization"
+    },
+    {
+      "time": 1000,
+      "action": "photon_travels",
+      "description": "Photon travels through quantum channel"
+    },
+    {
+      "time": 2000,
+      "action": "bob_receives",
+      "description": "Bob receives and measures photon"
+    },
+    {
+      "time": 3000,
+      "action": "result_recorded",
+      "description": "Measurement result recorded"
+    }
+  ],
+  "basis_comparison": [
+    {
+      "time": 0,
+      "action": "show_alice_basis",
+      "description": "Show Alice's chosen basis"
+    },
+    {
+      "time": 1000,
+      "action": "show_bob_basis",
+      "description": "Show Bob's chosen basis"
+    },
+    {
+      "time": 2000,
+      "action": "compare_basis",
+      "description": "Compare if bases match"
+    },
+    {
+      "time": 3000,
+      "action": "keep_or_discard",
+      "description": "Keep bit if match, discard if different"
+    }
+  ],
+  "eavesdropping_detection": [
+    {
+      "time": 0,
+      "action": "eve_intercepts",
+      "description": "Eve intercepts photon"
+    },
+    {
+      "time": 1000,
+      "action": "eve_measures",
+      "description": "Eve measures in random basis"
+    },
+    {
+      "time": 2000,
+      "action": "eve_resends",
+      "description": "Eve sends new photon to Bob"
+    },
+    {
+      "time": 3000,
+      "action": "errors_introduced",
+      "description": "Measurement errors introduced"
+    },
+    {
+      "time": 4000,
+      "action": "error_detection",
+      "description": "Alice and Bob detect high error rate"
+    }
+  ]
+}

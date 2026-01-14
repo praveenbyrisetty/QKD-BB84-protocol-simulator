@@ -1,0 +1,173 @@
+{
+  "protocol_info": {
+    "name": "BB84 Protocol",
+    "inventors": "Charles Bennett and Gilles Brassard",
+    "year": "1984",
+    "description": "The first quantum key distribution protocol that enables secure communication using quantum mechanical principles"
+  },
+  "quantum_principles": {
+    "no_cloning_theorem": "It is impossible to create a perfect copy of an arbitrary unknown quantum state",
+    "measurement_disturbance": "Any measurement of a quantum system disturbs the system, making eavesdropping detectable",
+    "quantum_uncertainty": "Quantum states cannot be measured in incompatible bases simultaneously"
+  },
+  "polarization_states": {
+    "rectilinear_basis": {
+      "name": "Rectilinear (Z) Basis",
+      "states": {
+        "horizontal": {
+          "symbol": "|0\u27e9",
+          "angle": "0\u00b0",
+          "bit": "0"
+        },
+        "vertical": {
+          "symbol": "|1\u27e9",
+          "angle": "90\u00b0",
+          "bit": "1"
+        }
+      }
+    },
+    "diagonal_basis": {
+      "name": "Diagonal (X) Basis",
+      "states": {
+        "diagonal": {
+          "symbol": "|+\u27e9",
+          "angle": "45\u00b0",
+          "bit": "0"
+        },
+        "anti_diagonal": {
+          "symbol": "|-\u27e9",
+          "angle": "-45\u00b0",
+          "bit": "1"
+        }
+      }
+    }
+  },
+  "protocol_steps": [
+    {
+      "step": 1,
+      "title": "Key Generation",
+      "description": "Alice generates two random bit strings: one for the data bits and one for the basis choice",
+      "details": [
+        "Alice creates random bit string (e.g., 0110101...)",
+        "Alice creates random basis string (e.g., 0101010...)",
+        "0 = rectilinear basis, 1 = diagonal basis"
+      ]
+    },
+    {
+      "step": 2,
+      "title": "Quantum State Preparation",
+      "description": "Alice encodes each bit into photon polarization according to chosen basis",
+      "details": [
+        "Bit 0 in rectilinear \u2192 horizontal polarization (0\u00b0)",
+        "Bit 1 in rectilinear \u2192 vertical polarization (90\u00b0)",
+        "Bit 0 in diagonal \u2192 diagonal polarization (45\u00b0)",
+        "Bit 1 in diagonal \u2192 anti-diagonal polarization (-45\u00b0)"
+      ]
+    },
+    {
+      "step": 3,
+      "title": "Quantum Transmission",
+      "description": "Alice sends polarized photons to Bob through quantum channel",
+      "details": [
+        "Photons travel through fiber optic cable or free space",
+        "Each photon carries one qubit of information",
+        "Channel may be insecure but quantum properties provide security"
+      ]
+    },
+    {
+      "step": 4,
+      "title": "Random Measurement",
+      "description": "Bob randomly chooses measurement basis for each received photon",
+      "details": [
+        "Bob generates random basis string independently",
+        "Measures each photon in either rectilinear or diagonal basis",
+        "Gets correct result only if basis matches Alice's encoding"
+      ]
+    },
+    {
+      "step": 5,
+      "title": "Basis Reconciliation",
+      "description": "Alice and Bob publicly compare basis choices over classical channel",
+      "details": [
+        "Alice announces her basis choice for each bit (not the bit values)",
+        "Bob announces his measurement basis choice",
+        "They keep only bits where bases match (\u224850% of bits)"
+      ]
+    },
+    {
+      "step": 6,
+      "title": "Error Detection",
+      "description": "Test subset of sifted key to detect eavesdropping",
+      "details": [
+        "Randomly select subset of matching bits",
+        "Compare bit values publicly",
+        "If error rate > 25%, abort protocol (eavesdropper detected)",
+        "If error rate \u2264 25%, proceed with key"
+      ]
+    },
+    {
+      "step": 7,
+      "title": "Error Correction & Privacy Amplification",
+      "description": "Correct remaining errors and compress key for final security",
+      "details": [
+        "Apply error correction algorithms",
+        "Use privacy amplification to reduce Eve's information",
+        "Generate final shared secret key"
+      ]
+    }
+  ],
+  "security_features": {
+    "eavesdropping_detection": "Any measurement by Eve disturbs photon states, introducing detectable errors",
+    "unconditional_security": "Security based on laws of physics, not computational assumptions",
+    "information_theoretic_security": "Even with unlimited computing power, Eve cannot break the protocol"
+  },
+  "example_scenario": {
+    "alice_bits": "1011001",
+    "alice_basis": "0110101",
+    "encoded_states": [
+      "|1\u27e9",
+      "|+\u27e9",
+      "|0\u27e9",
+      "|-\u27e9",
+      "|1\u27e9",
+      "|+\u27e9",
+      "|-\u27e9"
+    ],
+    "bob_basis": "0101101",
+    "bob_measurements": [
+      "1",
+      "0",
+      "1",
+      "1",
+      "0",
+      "+",
+      "-"
+    ],
+    "matching_positions": [
+      0,
+      2,
+      5,
+      6
+    ],
+    "sifted_key": "1011"
+  },
+  "applications": [
+    "Banking and financial transactions",
+    "Government and military communications",
+    "Healthcare data protection",
+    "Critical infrastructure security",
+    "Future quantum internet"
+  ],
+  "advantages": [
+    "Provable security based on quantum physics",
+    "Detection of eavesdropping attempts",
+    "Future-proof against quantum computers",
+    "No reliance on mathematical complexity"
+  ],
+  "limitations": [
+    "Limited transmission distance (due to photon loss)",
+    "Requires specialized quantum hardware",
+    "Lower key generation rates compared to classical methods",
+    "Susceptible to implementation flaws"
+  ]
+}

@@ -1,0 +1,224 @@
+:root {
+  /* --- THEME COLORS --- */
+  --bg-body: #f3f4f6;       /* Light Grey Background */
+  --header-bg: #1e293b;     /* Dark Blue Header */
+  
+  /* Panels */
+  --alice-bg: #fff1f2;      /* Light Pink */
+  --bob-bg: #f0fdf4;        /* Light Green */
+  --card-bg: #ffffff;       /* White Bit Cards */
+  
+  /* Bit Colors */
+  --bit-1: #ef4444;         /* Red */
+  --bit-0: #3b82f6;         /* Blue */
+  --sift-match: #22c55e;    /* Green for matches */
+  
+  /* Text & UI */
+  --text-main: #1f2937;
+  --text-sub: #6b7280;
+  --accent: #6366f1;        /* Indigo Buttons */
+  --border: #e5e7eb;
+}
+
+body {
+  background-color: var(--bg-body);
+  color: var(--text-main);
+  font-family: 'Inter', system-ui, sans-serif;
+  margin: 0;
+  padding: 0;
+  padding-bottom: 100px; /* Space for footer */
+}
+
+/* --- HEADER --- */
+.top-nav {
+  background: var(--header-bg);
+  color: white;
+  padding: 15px 40px;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  box-shadow: 0 4px 6px -1px rgba(0,0,0,0.1);
+}
+.nav-brand { font-size: 1.25rem; font-weight: 700; letter-spacing: 0.5px; }
+
+/* --- MAIN LAYOUT --- */
+.container {
+  max-width: 1280px;
+  margin: 30px auto;
+  padding: 0 20px;
+  display: flex;
+  flex-direction: column;
+  gap: 30px;
+}
+
+.banner {
+  background: white;
+  color: var(--header-bg);
+  padding: 15px;
+  text-align: center;
+  border-radius: 8px;
+  font-weight: 700;
+  font-size: 1.2rem;
+  box-shadow: 0 1px 3px rgba(0,0,0,0.1);
+  border: 1px solid var(--border);
+}
+
+.section-label {
+  text-align: center;
+  color: var(--text-sub);
+  font-size: 0.85rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  margin-bottom: 12px;
+  letter-spacing: 1px;
+}
+
+/* --- QUANTUM CHANNEL --- */
+.channel-container {
+  background: white;
+  border-radius: 12px;
+  padding: 25px;
+  border: 1px solid var(--border);
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  min-height: 100px;
+  position: relative;
+  overflow: hidden;
+  box-shadow: 0 2px 4px rgba(0,0,0,0.05);
+}
+
+/* --- ALICE & BOB PANELS --- */
+.split-view {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 25px;
+}
+
+.panel {
+  border-radius: 16px;
+  padding: 25px;
+  border: 1px solid rgba(0,0,0,0.05);
+  box-shadow: 0 2px 5px rgba(0,0,0,0.05);
+}
+.panel.alice { background-color: var(--alice-bg); }
+.panel.bob { background-color: var(--bob-bg); }
+
+.panel-title {
+  text-align: center;
+  font-weight: 800;
+  font-size: 1.2rem;
+  margin-bottom: 20px;
+}
+.alice-text { color: #e11d48; } /* Deep Pink */
+.bob-text { color: #16a34a; }   /* Deep Green */
+
+.bit-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(80px, 1fr)); /* Wider for cards */
+  gap: 15px;
+}
+
+/* --- QUBIT CARD STYLING (Matches your photo) --- */
+.bit-card {
+  background: var(--card-bg);
+  padding: 15px 10px;
+  border-radius: 12px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 8px;
+  box-shadow: 0 2px 8px rgba(0,0,0,0.08);
+  transition: transform 0.2s, box-shadow 0.2s;
+  border: 1px solid rgba(0,0,0,0.02);
+}
+.bit-card:hover { transform: translateY(-3px); box-shadow: 0 5px 15px rgba(0,0,0,0.1); }
+
+/* The Circle (Red/Blue) */
+.circle {
+  width: 32px;
+  height: 32px;
+  border-radius: 50%;
+  color: white;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-weight: 700;
+  font-size: 0.9rem;
+  box-shadow: 0 2px 4px rgba(0,0,0,0.2);
+}
+.bg-red { background-color: var(--bit-1); }
+.bg-blue { background-color: var(--bit-0); }
+.bg-gray { background-color: #d1d5db; }
+
+/* Basis & Pol Text */
+.basis-symbol { font-weight: 800; color: var(--text-main); font-size: 1.1rem; }
+.pol-text { font-family: monospace; color: var(--text-sub); font-size: 0.75rem; background: #f3f4f6; padding: 2px 6px; border-radius: 4px; }
+
+/* --- SIFTED BITS (Green Badges) --- */
+.sifted-grid {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  justify-content: center;
+  margin-bottom: 20px;
+}
+.sift-badge {
+  background-color: var(--sift-match);
+  color: white;
+  padding: 8px 16px;
+  border-radius: 6px;
+  font-weight: 600;
+  font-size: 0.9rem;
+  box-shadow: 0 2px 4px rgba(34, 197, 94, 0.3);
+}
+
+/* --- STATS BOX --- */
+.stats-box {
+  background: white;
+  padding: 30px;
+  border-radius: 16px;
+  box-shadow: 0 4px 6px -1px rgba(0,0,0,0.05);
+  border: 1px solid var(--border);
+}
+
+.progress-track {
+  width: 100%; height: 16px;
+  background: #e5e7eb;
+  border-radius: 8px;
+  overflow: hidden;
+  margin: 15px 0;
+}
+.progress-fill { height: 100%; transition: width 0.6s cubic-bezier(0.4, 0, 0.2, 1); }
+
+/* --- FOOTER --- */
+.sticky-footer {
+  position: fixed;
+  bottom: 0; left: 0; width: 100%;
+  background: rgba(255, 255, 255, 0.95);
+  backdrop-filter: blur(10px);
+  padding: 15px;
+  border-top: 1px solid var(--border);
+  display: flex;
+  justify-content: center;
+  gap: 12px;
+  box-shadow: 0 -4px 20px rgba(0,0,0,0.05);
+  z-index: 100;
+}
+
+.btn {
+  padding: 10px 24px;
+  border: none;
+  border-radius: 8px;
+  font-weight: 600;
+  font-size: 0.9rem;
+  cursor: pointer;
+  transition: all 0.2s;
+  background: #f3f4f6;
+  color: #4b5563;
+}
+.btn-primary { background: var(--accent); color: white; box-shadow: 0 4px 12px rgba(99, 102, 241, 0.3); }
+.btn-primary:hover { background: #4f46e5; transform: translateY(-1px); }
+.btn-danger { background: #fee2e2; color: #ef4444; }
+.btn-danger:hover { background: #ef4444; color: white; }
+.btn:disabled { opacity: 0.5; cursor: not-allowed; transform: none; box-shadow: none; }
