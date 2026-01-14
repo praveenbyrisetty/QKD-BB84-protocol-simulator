@@ -1,6 +1,5 @@
 # ⚛️ Quantum BB84 Simulator
 
-![License](https://img.shields.io/badge/license-MIT-blue.svg)
 ![React](https://img.shields.io/badge/frontend-React_Vite-61DAFB.svg)
 ![Flask](https://img.shields.io/badge/backend-Flask_Python-000000.svg)
 
