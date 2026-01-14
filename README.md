@@ -93,10 +93,6 @@ Error Check: Run the "Cascade Protocol". If Eve was listening, the Error Rate (>
 
 Encrypt: If the key is secure, type a message in the Secure Messaging panel to encrypt it using the generated Quantum Key + AES-256.
 
-📸 Screenshots
-
-
-
 🤝 Contributing
 Contributions are welcome! Please fork the repository and create a pull request for any features or bug fixes.
 
