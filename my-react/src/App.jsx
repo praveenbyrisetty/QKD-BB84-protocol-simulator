@@ -74,6 +74,7 @@ function App() {
       console.log('[Desktop] BB84 result received for message:', data.message);
       setChatCurrentMessage(data.message);
       setChatSender(data.sender);
+      if (data.num_qubits) setNumBits(data.num_qubits);
       
       // Populate BB84 data and animate through the steps
       const bb84 = data.bb84_data;
@@ -486,6 +487,7 @@ function App() {
         text={bubbleData.text} 
         x={bubbleData.x} 
         y={bubbleData.y} 
+        onClose={() => setBubbleData({ title: null, text: null, x: 0, y: 0 })}
       />
 
     </div>

@@ -49,7 +49,7 @@ def run_one_qubit_circuit(alice_bit, alice_basis, bob_basis, eve_present):
     return int(job.result().get_memory()[0])
 
 
-def run_bb84(n, eve):
+def run_bb84(n, eve, key_bits_needed=64):
     """Run the BB84 protocol and return all results."""
     alice_bits = [secrets.randbelow(2) for _ in range(n)]
     alice_bases = [secrets.choice(['+', 'x']) for _ in range(n)]
@@ -70,8 +70,16 @@ def run_bb84(n, eve):
     final_key = [1, 0, 1, 1]
     if alice_key and not aborted:
         raw = "".join(str(b) for b in alice_key)
-        h = hashlib.sha256(raw.encode()).hexdigest()
-        final_key = [int(b) for b in format(int(h[:16], 16), '064b')]
+        # Generate enough key bits by hashing with multiple rounds
+        key_hex_needed = (key_bits_needed + 3) // 4
+        hash_hex = ""
+        counter = 0
+        while len(hash_hex) < key_hex_needed:
+            h = hashlib.sha256((raw + str(counter)).encode()).hexdigest()
+            hash_hex += h
+            counter += 1
+        hash_hex = hash_hex[:key_hex_needed]
+        final_key = [int(b) for b in bin(int(hash_hex, 16))[2:].zfill(key_bits_needed)][:key_bits_needed]
 
     return {
         "alice_bits": alice_bits, "alice_bases": alice_bases, "bob_bases": bob_bases,
@@ -278,14 +286,22 @@ def handle_send_message(data):
 
     print(f"[CHAT] {sender_role} says: '{message}' (eve={room['eve']})")
 
+    # Auto-calculate qubits from message length
+    msg_bits_needed = len(message) * 8
+    # Need ~3x qubits because sifting keeps ~50%, plus safety margin
+    num_qubits = max(msg_bits_needed * 3, 50)
+
+    print(f"[CHAT] Message needs {msg_bits_needed} bits → using {num_qubits} qubits")
+
     # 1. Run BB84 protocol
-    bb84_data = run_bb84(room["numBits"], room["eve"])
+    bb84_data = run_bb84(num_qubits, room["eve"], key_bits_needed=msg_bits_needed)
 
     # 2. Send BB84 results to desktop for visualization
     emit("bb84_result", {
         "bb84_data": bb84_data,
         "sender": sender_role,
         "message": message,
+        "num_qubits": num_qubits,
     }, to=room_id)
 
     # 3. If BB84 aborted (Eve detected), block the message

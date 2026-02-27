@@ -1,6 +1,6 @@
 import React, { useRef, useEffect, useState } from 'react';
 
-export default function FixedBubble({ title, text, x, y }) {
+export default function FixedBubble({ title, text, x, y, onClose }) {
   const bubbleRef = useRef(null);
   const [adjustedX, setAdjustedX] = useState(x);
   const [adjustedY, setAdjustedY] = useState(y);
@@ -59,13 +59,23 @@ export default function FixedBubble({ title, text, x, y }) {
         color: '#e2e8f0',
         zIndex: 10000,
         boxShadow: '0 10px 25px rgba(0,0,0,0.6)',
-        pointerEvents: 'none',
+        pointerEvents: 'auto',
         animation: 'fadeIn 0.2s ease-out'
       }}
     >
-      <h4 style={{ margin: '0 0 6px 0', color: '#38bdf8', fontSize: '0.95rem', borderBottom:'1px solid #334155', paddingBottom:'4px' }}>
-        {title}
-      </h4>
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '6px', borderBottom:'1px solid #334155', paddingBottom:'4px' }}>
+        <h4 style={{ margin: 0, color: '#38bdf8', fontSize: '0.95rem' }}>
+          {title}
+        </h4>
+        <button onClick={onClose} style={{
+          background: 'none', border: 'none', color: '#94a3b8', fontSize: '1.1rem',
+          cursor: 'pointer', padding: '0 0 0 8px', lineHeight: 1,
+          transition: 'color 0.2s',
+        }}
+        onMouseEnter={(e) => e.currentTarget.style.color = '#fff'}
+        onMouseLeave={(e) => e.currentTarget.style.color = '#94a3b8'}
+        >×</button>
+      </div>
       <p style={{ margin: 0, fontSize: '0.8rem', lineHeight: '1.4' }}>
         {text}
       </p>

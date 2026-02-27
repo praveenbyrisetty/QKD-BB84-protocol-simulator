@@ -133,30 +133,6 @@ export default function QRLanding({ onStartSolo, onStartChat }) {
           </label>
         </div>
 
-        {/* Qubit Slider */}
-        <div style={{
-          background: '#0f172a', padding: '16px 20px', borderRadius: '12px',
-          border: '1px solid #334155', marginBottom: '30px',
-        }}>
-          <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '10px' }}>
-            <span style={{ fontSize: '0.85rem', fontWeight: 700, color: '#94a3b8', textTransform: 'uppercase', letterSpacing: '1px' }}>
-              Transmission Size
-            </span>
-            <span style={{ color: '#6366f1', fontWeight: 'bold', fontFamily: 'monospace', fontSize: '1.1rem' }}>
-              {numBits} Qubits
-            </span>
-          </div>
-          <input
-            type="range" min="50" max="500" value={numBits}
-            onChange={(e) => setNumBits(parseInt(e.target.value))}
-            className="custom-range"
-            style={{ width: '100%' }}
-          />
-          <div style={{ fontSize: '0.7rem', color: '#475569', marginTop: '6px', textAlign: 'center' }}>
-            More qubits = longer key = longer messages possible
-          </div>
-        </div>
-
         {/* QR Code Section */}
         {qrOn && (
           <div style={{
