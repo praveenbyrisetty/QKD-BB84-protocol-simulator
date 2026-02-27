@@ -1,6 +1,6 @@
 import React from 'react';
 
-export default function QuantumChannel({ isTransmitting, qubits }) {
+export default function QuantumChannel({ isTransmitting, qubits, onExpand }) {
   const getParticleVisual = (q) => {
     if (q.aliceBasis === '+') {
       return q.aliceBit === 0 ? "↑" : "→";
@@ -55,7 +55,7 @@ export default function QuantumChannel({ isTransmitting, qubits }) {
   );
 
   return (
-    <div className="channel-container" style={{
+    <div className="channel-container" onClick={onExpand} style={{
       background: '#020617',
       border: '1px solid #1e293b',
       boxShadow: 'inset 0 0 20px rgba(0,0,0,0.5)',
@@ -65,8 +65,19 @@ export default function QuantumChannel({ isTransmitting, qubits }) {
       display: 'flex', 
       alignItems: 'center', 
       justifyContent: 'center', 
-      borderRadius: '12px'
-    }}>
+      borderRadius: '12px',
+      cursor: 'pointer',
+      transition: 'border-color 0.3s ease, box-shadow 0.3s ease'
+    }}
+    onMouseEnter={(e) => {
+      e.currentTarget.style.borderColor = '#38bdf8';
+      e.currentTarget.style.boxShadow = 'inset 0 0 20px rgba(0,0,0,0.5), 0 0 15px rgba(56,189,248,0.2)';
+    }}
+    onMouseLeave={(e) => {
+      e.currentTarget.style.borderColor = '#1e293b';
+      e.currentTarget.style.boxShadow = 'inset 0 0 20px rgba(0,0,0,0.5)';
+    }}
+    >
       
       {/* 1. SIMPLE STATIONS */}
       <SimpleStation name="ALICE" color="#f43f5e" side="left" />
@@ -145,6 +156,15 @@ export default function QuantumChannel({ isTransmitting, qubits }) {
            );
          })
       )}
+
+      {/* Click hint */}
+      <div style={{
+        position: 'absolute', bottom: '8px', width: '100%', textAlign: 'center',
+        fontSize: '0.65rem', color: '#475569', letterSpacing: '1px',
+        fontFamily: 'monospace', zIndex: 15
+      }}>
+        🔍 Click to explore equipment
+      </div>
     </div>
   );
 }

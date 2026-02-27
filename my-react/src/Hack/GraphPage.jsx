@@ -1,6 +1,6 @@
 import React from 'react';
 
-export default function GraphPage({ qubits }) {
+export default function GraphPage({ qubits, errorRate }) {
   const siftedData = qubits ? qubits.filter(q => q.aliceBasis === q.bobBasis) : [];
 
   if (siftedData.length === 0) {
@@ -44,7 +44,20 @@ export default function GraphPage({ qubits }) {
   const bobPoints = displayData.map((q, i) => `${getX(i)},${getY(q.bobBit)}`).join(" ");
 
   return (
-    <div style={{width: '100%', height: '100%', overflow: 'hidden'}}>
+    <div className="panel" style={{
+      width: '100%', height: '100%', overflow: 'hidden',
+      border: '1px solid #22c55e',
+      borderRadius: '12px',
+      background: 'rgba(15, 23, 42, 0.6)',
+      padding: '15px',
+      boxSizing: 'border-box',
+      display: 'flex',
+      flexDirection: 'column'
+    }}>
+      <div style={{textAlign:'center', marginBottom:'10px', color:'#e2e8f0', flexShrink: 0}}>
+        QBER: {errorRate !== undefined ? errorRate.toFixed(1) : '0.0'}%
+      </div>
+      <div style={{flex: 1, minHeight: 0}}>
       <svg 
         viewBox={`0 0 ${width} ${height}`} 
         preserveAspectRatio="none"
@@ -81,6 +94,7 @@ export default function GraphPage({ qubits }) {
           );
         })}
       </svg>
+      </div>
     </div>
   );
 }
