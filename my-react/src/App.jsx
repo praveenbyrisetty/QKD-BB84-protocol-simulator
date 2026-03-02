@@ -19,8 +19,9 @@ import CascadeExpanded from './Hack/CascadeExpanded';
 import PrivacyAmpExpanded from './Hack/PrivacyAmpExpanded';
 import EncryptionExpanded from './Hack/EncryptionExpanded';
 import QRLanding from './Hack/QRLanding';
+import EveOverlay from './Hack/EveOverlay';
 
-const BACKEND_URL = 'http://127.0.0.1:5000';
+const BACKEND_URL = ''; // Uses Vite proxy — all requests go through port 5173
 
 function App() {
   // --- MODE ---
@@ -56,12 +57,15 @@ function App() {
   const [chatSender, setChatSender] = useState('');
   const [chatCipher, setChatCipher] = useState('');
   const [chatDecrypted, setChatDecrypted] = useState('');
+  
+  // Eve overlay state
+  const [eveOverlayData, setEveOverlayData] = useState(null);
 
   // --- SOCKET.IO FOR QR CHAT MODE ---
   useEffect(() => {
     if (mode !== 'qr-chat' || !chatRoomId) return;
 
-    const s = io(BACKEND_URL, { transports: ['websocket', 'polling'] });
+    const s = io(BACKEND_URL, { transports: ['polling'] });
     setChatSocket(s);
 
     s.on('connect', () => {
@@ -109,6 +113,10 @@ function App() {
           setStep(4);
         }
       }, 12000);
+    });
+
+    s.on('eve_intercepting', (data) => {
+      setEveOverlayData(data);
     });
 
     s.on('encryption_result', (data) => {
@@ -165,6 +173,21 @@ function App() {
       const data = await response.json();
       console.log('Backend response:', data);
       setBackendData(data);
+
+      // Trigger the Eve overlay if Eve was active
+      if (isEveOn && data.eve_bases) {
+        const eveMatched = data.eve_bases.filter((b, i) => b === data.alice_bases[i]).length;
+        const garbled = Array.from({ length: 8 }, () =>
+          '0123456789ABCDEF'[Math.floor(Math.random() * 16)]
+        ).join('');
+        setEveOverlayData({
+          qubits_intercepted: numBits,
+          qubits_correct_basis: eveMatched,
+          garbled_preview: garbled,
+          qber: data.qber,
+        });
+      }
+
       const uiQubits = data.alice_bits.map((bit, i) => ({ id: i, aliceBit: bit, aliceBasis: data.alice_bases[i], bobBasis: data.bob_bases[i], bobBit: data.bob_results[i], }));
       setTimeout(() => { setQubits(uiQubits); setStep(1); setIsLoading(false); console.log('Step set to 1'); }, 1000);
     } catch (error) { console.error('FETCH ERROR:', error); alert("Backend Error"); setIsLoading(false); }
@@ -412,7 +435,7 @@ function App() {
                       {chatCipher || '⏳ Encrypting...'}
                     </div>
                     <div style={{fontSize:'0.7rem', color:'#64748b', marginTop:'8px', textAlign:'center'}}>
-                      {eveEnabled && '🕵️ Eve sees only this gibberish!'}
+                      {isEveOn && '🕵️ Eve sees only this gibberish!'}
                     </div>
                   </div>
 
@@ -481,6 +504,14 @@ function App() {
         </div>
       )}
       
+      {/* EVE INTERCEPTION OVERLAY */}
+      {eveOverlayData && (
+        <EveOverlay
+          eveData={eveOverlayData}
+          onDismiss={() => setEveOverlayData(null)}
+        />
+      )}
+
       {/* THE UNIVERSAL BUBBLE */}
       <FixedBubble 
         title={bubbleData.title} 

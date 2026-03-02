@@ -18,7 +18,8 @@ export default function EncryptionPanel({ finalKey }) {
     setCipherText("");
 
     try {
-      const response = await fetch('http://127.0.0.1:5000/encrypt', {
+      const backendHost = window.location.hostname;
+      const response = await fetch(`http://${backendHost}:5000/encrypt`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ message: msgInput, key: finalKey })
@@ -40,7 +41,8 @@ export default function EncryptionPanel({ finalKey }) {
     if (!cipherText || !finalKey) return;
 
     try {
-      const response = await fetch('http://127.0.0.1:5000/decrypt', {
+      const backendHost = window.location.hostname;
+      const response = await fetch(`http://${backendHost}:5000/decrypt`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ cipherText: cipherText, key: finalKey })

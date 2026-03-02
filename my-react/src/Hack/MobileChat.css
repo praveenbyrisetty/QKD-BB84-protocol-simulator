@@ -246,6 +246,213 @@
   letter-spacing: 1px;
 }
 
+/* Eve Interception Bubble — DRAMATIC HACKER STYLE */
+.mchat-eve-intercept {
+  background: linear-gradient(135deg, #0d0015 0%, #0f0020 50%, #0d0015 100%);
+  border: 1px solid rgba(239, 68, 68, 0.6);
+  border-radius: 14px;
+  padding: 0;
+  animation: eveSlideIn 0.4s cubic-bezier(0.34,1.56,0.64,1);
+  position: relative;
+  overflow: hidden;
+  box-shadow: 0 0 30px rgba(239,68,68,0.2), 0 0 60px rgba(139,92,246,0.08), inset 0 0 20px rgba(239,68,68,0.04);
+}
+
+/* Red top bar */
+.mchat-eve-intercept::before {
+  content: '';
+  position: absolute;
+  top: 0; left: 0; right: 0;
+  height: 3px;
+  background: linear-gradient(90deg, #8b5cf6, #ef4444, #f97316, #ef4444, #8b5cf6);
+  background-size: 200% 100%;
+  animation: eveBarSweep 2s linear infinite;
+  z-index: 2;
+}
+
+/* Scanline texture */
+.mchat-eve-intercept::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background: repeating-linear-gradient(
+    0deg,
+    transparent,
+    transparent 2px,
+    rgba(139, 92, 246, 0.015) 2px,
+    rgba(139, 92, 246, 0.015) 4px
+  );
+  pointer-events: none;
+}
+
+.mchat-eve-intercept-inner {
+  padding: 16px;
+  position: relative;
+  z-index: 1;
+}
+
+.mchat-eve-intercept-header {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 14px;
+  padding-bottom: 10px;
+  border-bottom: 1px solid rgba(239,68,68,0.2);
+}
+
+.mchat-eve-spy-icon {
+  font-size: 1.6rem;
+  animation: spyPulse 1.5s ease-in-out infinite;
+  filter: drop-shadow(0 0 8px rgba(239,68,68,0.8));
+}
+
+.mchat-eve-intercept-title {
+  font-size: 0.95rem;
+  font-weight: 900;
+  color: #ef4444;
+  text-transform: uppercase;
+  letter-spacing: 2px;
+  text-shadow: 0 0 10px rgba(239,68,68,0.5);
+}
+.mchat-eve-intercept-title::after {
+  content: '_';
+  animation: cursorBlink 0.8s step-end infinite;
+  color: #c084fc;
+}
+
+.mchat-eve-intercept-body {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.mchat-eve-stat-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  font-size: 0.76rem;
+  color: #94a3b8;
+  padding: 5px 10px;
+  background: rgba(0, 0, 0, 0.4);
+  border-radius: 6px;
+  border-left: 2px solid rgba(139,92,246,0.4);
+}
+
+.mchat-eve-stat-row strong {
+  color: #c084fc;
+  font-family: 'Courier New', monospace;
+  font-size: 0.85rem;
+}
+
+/* Qubit stream scrolling animation */
+.mchat-eve-qubit-stream {
+  margin: 10px 0;
+  height: 28px;
+  overflow: hidden;
+  background: #000;
+  border-radius: 6px;
+  border: 1px solid rgba(139,92,246,0.2);
+  position: relative;
+}
+.mchat-eve-qubit-stream-inner {
+  display: flex;
+  gap: 4px;
+  padding: 6px 8px;
+  animation: qubitScroll 3s linear infinite;
+  white-space: nowrap;
+}
+.mchat-eve-qubit-stream-inner span {
+  font-family: monospace;
+  font-size: 0.7rem;
+  font-weight: 700;
+}
+.mchat-eve-qubit-stream-inner span.intercept {
+  color: #ef4444;
+  text-shadow: 0 0 4px rgba(239,68,68,0.8);
+}
+.mchat-eve-qubit-stream-inner span.pass {
+  color: #334155;
+}
+
+.mchat-eve-garbled {
+  margin-top: 10px;
+  padding: 12px;
+  background: #000;
+  border-radius: 8px;
+  border: 1px solid rgba(239, 68, 68, 0.3);
+}
+
+.mchat-eve-garbled-label {
+  font-size: 0.62rem;
+  color: #ef4444;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 2px;
+  margin-bottom: 6px;
+  font-family: monospace;
+}
+
+.mchat-eve-garbled-text {
+  display: block;
+  font-family: 'Courier New', monospace;
+  font-size: 0.9rem;
+  color: #f59e0b;
+  word-break: break-all;
+  line-height: 1.5;
+  font-weight: 700;
+  letter-spacing: 2px;
+  animation: garbleFlicker 2.5s ease-in-out infinite;
+  text-shadow: 0 0 8px rgba(245,158,11,0.4);
+}
+
+.mchat-eve-garbled-note {
+  font-size: 0.65rem;
+  color: #475569;
+  margin-top: 6px;
+  font-family: monospace;
+}
+
+.mchat-eve-detected-badge {
+  margin-top: 12px;
+  padding: 10px 14px;
+  background: linear-gradient(135deg, rgba(239,68,68,0.15), rgba(239,68,68,0.05));
+  border: 1px solid rgba(239, 68, 68, 0.5);
+  border-radius: 8px;
+  font-size: 0.78rem;
+  font-weight: 800;
+  color: #f87171;
+  text-align: center;
+  animation: shakeIn 0.4s ease-out;
+  text-transform: uppercase;
+  letter-spacing: 1px;
+}
+
+@keyframes eveSlideIn {
+  from { opacity: 0; transform: translateY(16px) scale(0.94); }
+  to { opacity: 1; transform: translateY(0) scale(1); }
+}
+@keyframes eveBarSweep {
+  from { background-position: 0% 0%; }
+  to { background-position: 200% 0%; }
+}
+@keyframes spyPulse {
+  0%, 100% { transform: scale(1) rotate(-5deg); }
+  50% { transform: scale(1.2) rotate(5deg); }
+}
+@keyframes garbleFlicker {
+  0%, 100% { opacity: 1; }
+  30% { opacity: 0.4; filter: blur(1px); }
+  60% { opacity: 0.8; }
+}
+@keyframes qubitScroll {
+  from { transform: translateX(0); }
+  to { transform: translateX(-50%); }
+}
+@keyframes cursorBlink {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0; }
+}
+
 /* Encrypting indicator */
 .mchat-encrypting {
   display: flex;

@@ -7,6 +7,7 @@ export default function QRLanding({ onStartSolo, onStartChat }) {
   const [numBits, setNumBits] = useState(200);
   const [roomId, setRoomId] = useState(null);
   const [localIp, setLocalIp] = useState('');
+  const [ngrokUrl, setNgrokUrl] = useState('');
   const [userCount, setUserCount] = useState(0);
   const [isCreating, setIsCreating] = useState(false);
 
@@ -15,7 +16,7 @@ export default function QRLanding({ onStartSolo, onStartChat }) {
     if (!roomId) return;
     const interval = setInterval(async () => {
       try {
-        const res = await fetch(`http://127.0.0.1:5000/room-status/${roomId}`);
+        const res = await fetch(`/room-status/${roomId}`);
         const data = await res.json();
         setUserCount(data.user_count || 0);
       } catch (e) { /* ignore */ }
@@ -26,7 +27,7 @@ export default function QRLanding({ onStartSolo, onStartChat }) {
   const handleCreateRoom = async () => {
     setIsCreating(true);
     try {
-      const res = await fetch('http://127.0.0.1:5000/create-room', {
+      const res = await fetch(`/create-room`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ eve: eveOn, numBits: numBits }),
@@ -34,6 +35,7 @@ export default function QRLanding({ onStartSolo, onStartChat }) {
       const data = await res.json();
       setRoomId(data.room_id);
       setLocalIp(data.local_ip);
+      if (data.ngrok_url) setNgrokUrl(data.ngrok_url);
     } catch (e) {
       alert('Backend not reachable. Start the Flask server first.');
     }
@@ -48,8 +50,12 @@ export default function QRLanding({ onStartSolo, onStartChat }) {
     }
   };
 
-  const qrUrl = roomId && localIp
-    ? `http://${localIp}:5173/chat/${roomId}`
+  // Prefer ngrok URL (works from any network), fallback to local IP
+  const vitePort = window.location.port || '5173';
+  const qrUrl = roomId
+    ? (ngrokUrl
+        ? `${ngrokUrl}/chat/${roomId}`
+        : (localIp ? `http://${localIp}:${vitePort}/chat/${roomId}` : ''))
     : '';
 
   return (

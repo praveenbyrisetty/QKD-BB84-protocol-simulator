@@ -5,6 +5,8 @@ import secrets
 import hashlib
 import uuid
 import socket
+import urllib.request
+import json as json_lib
 
 # --- QISKIT IMPORTS ---
 from qiskit import QuantumCircuit
@@ -12,7 +14,8 @@ from qiskit_aer import AerSimulator
 
 app = Flask(__name__)
 CORS(app, resources={r"/*": {"origins": "*"}})
-socketio = SocketIO(app, cors_allowed_origins="*")
+socketio = SocketIO(app, cors_allowed_origins="*", async_mode='threading',
+                   ping_interval=40, ping_timeout=60)
 
 simulator = AerSimulator()
 
@@ -32,21 +35,49 @@ def get_local_ip():
         return "127.0.0.1"
 
 
+def get_ngrok_url():
+    """Check if ngrok is running and return its public URL."""
+    try:
+        req = urllib.request.urlopen("http://localhost:4040/api/tunnels", timeout=1)
+        data = json_lib.loads(req.read().decode())
+        tunnels = data.get("tunnels", [])
+        for t in tunnels:
+            if t.get("proto") == "https":
+                return t["public_url"]
+        if tunnels:
+            return tunnels[0]["public_url"]
+    except Exception:
+        pass
+    return None
+
+
 # --- HELPER FUNCTIONS ---
 def run_one_qubit_circuit(alice_bit, alice_basis, bob_basis, eve_present):
     qc = QuantumCircuit(1, 1)
     if alice_bit == 1: qc.x(0)
     if alice_basis == 'x': qc.h(0)
     
+    eve_basis = None
+    eve_result = None
     if eve_present:
-        if secrets.choice(['+', 'x']) == 'x': qc.h(0)
+        eve_basis = secrets.choice(['+', 'x'])
+        if eve_basis == 'x': qc.h(0)
         qc.measure(0, 0)
-        if secrets.choice(['+', 'x']) == 'x': qc.h(0)
+        eve_job = simulator.run(qc.copy(), shots=1, memory=True)
+        eve_result = int(eve_job.result().get_memory()[0])
+        # Re-prepare based on Eve's measurement
+        qc2 = QuantumCircuit(1, 1)
+        if eve_result == 1: qc2.x(0)
+        if eve_basis == 'x': qc2.h(0)
+        if bob_basis == 'x': qc2.h(0)
+        qc2.measure(0, 0)
+        job = simulator.run(qc2, shots=1, memory=True)
+        return int(job.result().get_memory()[0]), eve_basis, eve_result
 
     if bob_basis == 'x': qc.h(0)
     qc.measure(0, 0)
     job = simulator.run(qc, shots=1, memory=True)
-    return int(job.result().get_memory()[0])
+    return int(job.result().get_memory()[0]), None, None
 
 
 def run_bb84(n, eve, key_bits_needed=64):
@@ -54,7 +85,15 @@ def run_bb84(n, eve, key_bits_needed=64):
     alice_bits = [secrets.randbelow(2) for _ in range(n)]
     alice_bases = [secrets.choice(['+', 'x']) for _ in range(n)]
     bob_bases = [secrets.choice(['+', 'x']) for _ in range(n)]
-    bob_results = [run_one_qubit_circuit(alice_bits[i], alice_bases[i], bob_bases[i], eve) for i in range(n)]
+
+    bob_results = []
+    eve_bases = []
+    eve_results = []
+    for i in range(n):
+        bob_bit, e_basis, e_result = run_one_qubit_circuit(alice_bits[i], alice_bases[i], bob_bases[i], eve)
+        bob_results.append(bob_bit)
+        eve_bases.append(e_basis)
+        eve_results.append(e_result)
 
     alice_key = []
     bob_key = []
@@ -81,11 +120,15 @@ def run_bb84(n, eve, key_bits_needed=64):
         hash_hex = hash_hex[:key_hex_needed]
         final_key = [int(b) for b in bin(int(hash_hex, 16))[2:].zfill(key_bits_needed)][:key_bits_needed]
 
-    return {
+    result = {
         "alice_bits": alice_bits, "alice_bases": alice_bases, "bob_bases": bob_bases,
         "bob_results": bob_results, "alice_key": alice_key, "qber": qber,
         "aborted": aborted, "final_key": final_key
     }
+    if eve:
+        result["eve_bases"] = eve_bases
+        result["eve_results"] = eve_results
+    return result
 
 
 def encrypt_message(message, key):
@@ -149,10 +192,15 @@ def create_room():
         "desktops": [],    # Desktop observers
     }
     local_ip = get_local_ip()
-    return jsonify({
+    ngrok_url = get_ngrok_url()
+    result = {
         "room_id": room_id,
         "local_ip": local_ip,
-    })
+    }
+    if ngrok_url:
+        result["ngrok_url"] = ngrok_url
+        print(f"[ROOM] Using ngrok URL: {ngrok_url}")
+    return jsonify(result)
 
 
 @app.route("/room-status/<room_id>", methods=["GET"])
@@ -269,7 +317,7 @@ def handle_send_message(data):
         return
 
     room = rooms[room_id]
-    
+
     # Find sender role
     sender_role = None
     for user in room["users"]:
@@ -293,58 +341,74 @@ def handle_send_message(data):
 
     print(f"[CHAT] Message needs {msg_bits_needed} bits → using {num_qubits} qubits")
 
-    # 1. Run BB84 protocol
-    bb84_data = run_bb84(num_qubits, room["eve"], key_bits_needed=msg_bits_needed)
+    # Run BB84 in a background thread so we don't block the Socket.IO event loop
+    # (blocking it causes heartbeat timeouts and dropped connections)
+    def do_bb84():
+        # 1. Run BB84 protocol
+        bb84_data = run_bb84(num_qubits, room["eve"], key_bits_needed=msg_bits_needed)
 
-    # 2. Send BB84 results to desktop for visualization
-    emit("bb84_result", {
-        "bb84_data": bb84_data,
-        "sender": sender_role,
-        "message": message,
-        "num_qubits": num_qubits,
-    }, to=room_id)
+        # 1.5. If Eve is active, notify the room about interception
+        if room["eve"]:
+            garbled = hashlib.md5(message.encode()).hexdigest()[:len(message)].upper()
+            eve_matched = sum(1 for i in range(num_qubits) if bb84_data["eve_bases"][i] == bb84_data["alice_bases"][i])
+            socketio.emit("eve_intercepting", {
+                "sender": sender_role,
+                "qubits_intercepted": num_qubits,
+                "qubits_correct_basis": eve_matched,
+                "garbled_preview": garbled,
+                "qber": bb84_data["qber"],
+            }, to=room_id)
+            print(f"[EVE] Intercepted {num_qubits} qubits, matched basis on {eve_matched}")
 
-    # 3. If BB84 aborted (Eve detected), block the message
-    if bb84_data["aborted"]:
-        # Generate garbled text that Eve "sees"
-        garbled = hashlib.md5(message.encode()).hexdigest()[:16].upper()
-
-        emit("message_blocked", {
+        # 2. Send BB84 results to desktop for visualization
+        socketio.emit("bb84_result", {
+            "bb84_data": bb84_data,
             "sender": sender_role,
-            "reason": f"Eavesdropping detected! QBER: {bb84_data['qber']*100:.1f}%",
-            "eve_saw": garbled,
+            "message": message,
+            "num_qubits": num_qubits,
         }, to=room_id)
-        print(f"[CHAT] BLOCKED — Eve detected (QBER: {bb84_data['qber']*100:.1f}%)")
-        return
 
-    # 4. Encrypt the message
-    cipher_hex, error = encrypt_message(message, bb84_data["final_key"])
-    if error:
-        emit("message_error", {"error": error}, to=sender_sid)
-        return
+        # 3. If BB84 aborted (Eve detected), block the message
+        if bb84_data["aborted"]:
+            garbled = hashlib.md5(message.encode()).hexdigest()[:16].upper()
+            socketio.emit("message_blocked", {
+                "sender": sender_role,
+                "reason": f"Eavesdropping detected! QBER: {bb84_data['qber']*100:.1f}%",
+                "eve_saw": garbled,
+            }, to=room_id)
+            print(f"[CHAT] BLOCKED — Eve detected (QBER: {bb84_data['qber']*100:.1f}%)")
+            return
 
-    # 5. Decrypt the message
-    decrypted = decrypt_message(cipher_hex, bb84_data["final_key"])
+        # 4. Encrypt the message
+        cipher_hex, error = encrypt_message(message, bb84_data["final_key"])
+        if error:
+            socketio.emit("message_error", {"error": error}, to=sender_sid)
+            return
 
-    # 6. Send encryption details to desktop for visualization
-    emit("encryption_result", {
-        "cipher_text": cipher_hex,
-        "decrypted_message": decrypted,
-        "sender": sender_role,
-    }, to=room_id)
+        # 5. Decrypt the message
+        decrypted = decrypt_message(cipher_hex, bb84_data["final_key"])
 
-    # 7. Deliver the message to all users in the room
-    emit("message_delivered", {
-        "sender": sender_role,
-        "message": decrypted,
-        "cipher_text": cipher_hex,
-        "timestamp": str(uuid.uuid4())[:8],
-    }, to=room_id)
+        # 6. Send encryption details to desktop for visualization
+        socketio.emit("encryption_result", {
+            "cipher_text": cipher_hex,
+            "decrypted_message": decrypted,
+            "sender": sender_role,
+        }, to=room_id)
 
-    print(f"[CHAT] Message delivered: {sender_role} → {receiver_role}")
+        # 7. Deliver the message to all users in the room
+        socketio.emit("message_delivered", {
+            "sender": sender_role,
+            "message": decrypted,
+            "cipher_text": cipher_hex,
+            "timestamp": str(uuid.uuid4())[:8],
+        }, to=room_id)
+
+        print(f"[CHAT] Message delivered: {sender_role} → {receiver_role}")
+
+    socketio.start_background_task(do_bb84)
 
 
 if __name__ == "__main__":
     print(f"\n🌐 Local IP: {get_local_ip()}")
     print(f"🚀 Starting server on port 5000...\n")
-    socketio.run(app, host="0.0.0.0", port=5000, debug=True)
+    socketio.run(app, host="0.0.0.0", port=5000, debug=False, use_reloader=False)

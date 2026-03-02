@@ -3,7 +3,7 @@ import { useParams } from 'react-router-dom';
 import { io } from 'socket.io-client';
 import './MobileChat.css';
 
-const BACKEND_URL = 'http://' + window.location.hostname + ':5000';
+const BACKEND_URL = ''; // Uses Vite proxy — all requests go through port 5173
 
 export default function MobileChat() {
   const { roomId } = useParams();
@@ -25,12 +25,37 @@ export default function MobileChat() {
 
   // Connect to backend
   useEffect(() => {
-    const s = io(BACKEND_URL, { transports: ['websocket', 'polling'] });
+    const s = io(BACKEND_URL, {
+      transports: ['polling', 'websocket'],
+      timeout: 15000,
+      reconnectionAttempts: 5,
+      extraHeaders: {
+        'ngrok-skip-browser-warning': 'true',
+      },
+    });
     setSocket(s);
 
+    // Connection timeout — if backend unreachable (e.g. firewall blocks port 5000)
+    const connectTimeout = setTimeout(() => {
+      if (!s.connected) {
+        setError(
+          `Cannot reach backend at ${BACKEND_URL}.\n\nMost likely cause: Windows Firewall is blocking port 5000.\n\nFix: Run this in PowerShell as Administrator on the PC:\n\nnetsh advfirewall firewall add rule name="Flask 5000" dir=in action=allow protocol=TCP localport=5000\n\nThen restart the Flask server and scan the QR again.`
+        );
+        s.disconnect();
+      }
+    }, 15000);
+
     s.on('connect', () => {
+      clearTimeout(connectTimeout);
       console.log('[Mobile] Connected to backend');
       s.emit('join_room', { room_id: roomId });
+    });
+
+    s.on('connect_error', () => {
+      clearTimeout(connectTimeout);
+      setError(
+        `Cannot reach backend at ${BACKEND_URL}.\n\nMost likely cause: Windows Firewall is blocking port 5000.\n\nFix: Run this in PowerShell as Administrator on the PC:\n\nnetsh advfirewall firewall add rule name="Flask 5000" dir=in action=allow protocol=TCP localport=5000\n\nThen restart the Flask server and scan the QR again.`
+      );
     });
 
     s.on('room_joined', (data) => {
@@ -59,6 +84,17 @@ export default function MobileChat() {
 
     s.on('bb84_result', (data) => {
       setIsEncrypting(true);
+    });
+
+    s.on('eve_intercepting', (data) => {
+      setMessages(prev => [...prev, {
+        type: 'eve_intercept',
+        sender: data.sender,
+        qubitsIntercepted: data.qubits_intercepted,
+        qubitsCorrectBasis: data.qubits_correct_basis,
+        garbledPreview: data.garbled_preview,
+        qber: data.qber,
+      }]);
     });
 
     s.on('message_delivered', (data) => {
@@ -112,12 +148,44 @@ export default function MobileChat() {
 
   // Error State
   if (error) {
+    const COMMAND = `netsh advfirewall firewall add rule name="Flask 5000" dir=in action=allow protocol=TCP localport=5000`;
     return (
       <div className="mchat-container">
         <div className="mchat-error">
           <div style={{ fontSize: '3rem', marginBottom: '15px' }}>❌</div>
-          <h2>Connection Error</h2>
-          <p>{error}</p>
+          <h2 style={{ marginBottom: '10px' }}>Backend Unreachable</h2>
+          <p style={{ fontSize: '0.85rem', color: '#94a3b8', marginBottom: '14px' }}>
+            Cannot connect to <code style={{ color: '#f59e0b', background: '#1e293b', padding: '2px 6px', borderRadius: '4px' }}>{BACKEND_URL}</code>
+          </p>
+          <div style={{
+            background: '#1e293b', border: '1px solid #ef444440', borderRadius: '10px',
+            padding: '14px 16px', marginBottom: '14px', textAlign: 'left',
+          }}>
+            <div style={{ fontSize: '0.8rem', color: '#f87171', fontWeight: 700, marginBottom: '6px' }}>
+              🔥 Likely Cause: Windows Firewall is blocking port 5000
+            </div>
+            <div style={{ fontSize: '0.78rem', color: '#94a3b8' }}>
+              Port 5173 (React app) is open, but port 5000 (Flask backend) is blocked — that's why the page loads but the connection times out.
+            </div>
+          </div>
+          <div style={{
+            background: '#0f172a', border: '1px solid #334155', borderRadius: '10px',
+            padding: '14px 16px', textAlign: 'left',
+          }}>
+            <div style={{ fontSize: '0.78rem', color: '#22c55e', fontWeight: 700, marginBottom: '8px' }}>
+              ✅ Fix — Run this in PowerShell as Administrator on the PC:
+            </div>
+            <code style={{
+              display: 'block', fontSize: '0.7rem', color: '#38bdf8',
+              wordBreak: 'break-all', lineHeight: '1.5',
+              background: '#1e293b', padding: '10px', borderRadius: '6px',
+            }}>
+              {COMMAND}
+            </code>
+            <div style={{ fontSize: '0.72rem', color: '#64748b', marginTop: '10px' }}>
+              Then restart the Flask server and scan the QR code again.
+            </div>
+          </div>
         </div>
       </div>
     );
@@ -184,6 +252,59 @@ export default function MobileChat() {
             return (
               <div key={i} className="mchat-system-msg">
                 {msg.text}
+              </div>
+            );
+          }
+
+          if (msg.type === 'eve_intercept') {
+            // Build a repeating qubit stream pattern for animation
+            const qubits = Array.from({ length: 40 }, (_, i) =>
+              Math.random() > 0.45 ? 'intercept' : 'pass'
+            );
+            return (
+              <div key={i} className="mchat-eve-intercept">
+                <div className="mchat-eve-intercept-inner">
+                  <div className="mchat-eve-intercept-header">
+                    <span className="mchat-eve-spy-icon">🕵️</span>
+                    <span className="mchat-eve-intercept-title">EVE INTERCEPTED</span>
+                  </div>
+
+                  {/* Live qubit stream */}
+                  <div className="mchat-eve-qubit-stream">
+                    <div className="mchat-eve-qubit-stream-inner">
+                      {[...qubits, ...qubits].map((type, idx) => (
+                        <span key={idx} className={type}>{type === 'intercept' ? '1' : '0'}</span>
+                      ))}
+                    </div>
+                  </div>
+
+                  <div className="mchat-eve-intercept-body">
+                    <div className="mchat-eve-stat-row">
+                      <span>📡 Qubits intercepted</span>
+                      <strong>{msg.qubitsIntercepted}</strong>
+                    </div>
+                    <div className="mchat-eve-stat-row">
+                      <span>🎯 Correct basis guesses</span>
+                      <strong>{msg.qubitsCorrectBasis}/{msg.qubitsIntercepted}</strong>
+                    </div>
+                    <div className="mchat-eve-stat-row">
+                      <span>⚠️ Error rate (QBER)</span>
+                      <strong style={{ color: msg.qber > 0.11 ? '#ef4444' : '#f59e0b' }}>
+                        {(msg.qber * 100).toFixed(1)}%
+                      </strong>
+                    </div>
+                  </div>
+                  <div className="mchat-eve-garbled">
+                    <div className="mchat-eve-garbled-label">◈ WHAT EVE SEES</div>
+                    <code className="mchat-eve-garbled-text">{msg.garbledPreview}</code>
+                    <div className="mchat-eve-garbled-note">⚡ Quantum state disturbed — data unrecoverable</div>
+                  </div>
+                  {msg.qber > 0.11 && (
+                    <div className="mchat-eve-detected-badge">
+                      🚨 Alice &amp; Bob WILL detect this!
+                    </div>
+                  )}
+                </div>
               </div>
             );
           }
