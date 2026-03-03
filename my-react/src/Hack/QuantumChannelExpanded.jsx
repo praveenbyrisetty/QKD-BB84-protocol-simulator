@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
 
-export default function QuantumChannelExpanded({ qubits, isEveOn, onClose }) {
+export default function QuantumChannelExpanded({ qubits, isEveOn, onClose, onPhotonClick }) {
   const [paused, setPaused] = useState(false);
   const [currentQubit, setCurrentQubit] = useState(0);
   const [phase, setPhase] = useState('intro');
@@ -154,16 +154,23 @@ export default function QuantumChannelExpanded({ qubits, isEveOn, onClose }) {
     if (!q || !['transmit', 'intercept'].includes(phase)) return null;
     const color = q.aliceBit === 1 ? '#ef4444' : '#3b82f6';
     return (
-      <div style={{
-        width: '36px', height: '36px', borderRadius: '50%',
-        background: `radial-gradient(circle, ${color}, ${color}80)`,
-        border: `2px solid ${color}`,
-        boxShadow: `0 0 20px ${color}, 0 0 40px ${color}60`,
-        display: 'flex', alignItems: 'center', justifyContent: 'center',
-        fontSize: '1.2rem', fontWeight: 'bold', color: '#fff',
-        animation: phase === 'intercept' ? 'channelGlitch 0.3s ease infinite' : 'channelFloat 1.5s ease-in-out infinite',
-        position: 'relative', zIndex: 10
-      }}>
+      <div
+        onClick={() => onPhotonClick && onPhotonClick(q)}
+        title="Click to inspect this photon in 3D"
+        style={{
+          width: '36px', height: '36px', borderRadius: '50%',
+          background: `radial-gradient(circle, ${color}, ${color}80)`,
+          border: `2px solid ${color}`,
+          boxShadow: `0 0 20px ${color}, 0 0 40px ${color}60`,
+          display: 'flex', alignItems: 'center', justifyContent: 'center',
+          fontSize: '1.2rem', fontWeight: 'bold', color: '#fff',
+          animation: phase === 'intercept' ? 'channelGlitch 0.3s ease infinite' : 'channelFloat 1.5s ease-in-out infinite',
+          position: 'relative', zIndex: 10,
+          cursor: 'pointer',
+        }}
+        onMouseEnter={(e) => { e.currentTarget.style.transform = 'scale(1.35)'; }}
+        onMouseLeave={(e) => { e.currentTarget.style.transform = 'scale(1)'; }}
+      >
         {getParticleVisual(q)}
         {/* Glow trail */}
         <div style={{
@@ -372,22 +379,38 @@ export default function QuantumChannelExpanded({ qubits, isEveOn, onClose }) {
               : isCurrent ? '#38bdf8' : '#1e293b';
 
             return (
-              <div key={i} style={{
-                width: '28px', height: '28px', borderRadius: '6px',
-                background: isCurrent
-                  ? `linear-gradient(135deg, ${color}30, ${color}10)`
-                  : isPast
-                    ? `${color}15`
-                    : '#0f172a',
-                border: `1.5px solid ${isCurrent ? color : isPast ? `${color}50` : '#1e293b40'}`,
-                display: 'flex', alignItems: 'center', justifyContent: 'center',
-                fontSize: '0.6rem', fontWeight: 'bold',
-                color: isFuture ? '#334155' : color,
-                transition: 'all 0.3s ease',
-                transform: isCurrent ? 'scale(1.15)' : 'scale(1)',
-                boxShadow: isCurrent ? `0 0 12px ${color}40` : 'none',
-                opacity: isFuture ? 0.3 : 1
-              }}>
+              <div
+                key={i}
+                onClick={() => onPhotonClick && onPhotonClick(vq)}
+                title={`Click to inspect photon #${i + 1} in 3D`}
+                style={{
+                  width: '28px', height: '28px', borderRadius: '6px',
+                  background: isCurrent
+                    ? `linear-gradient(135deg, ${color}30, ${color}10)`
+                    : isPast
+                      ? `${color}15`
+                      : '#0f172a',
+                  border: `1.5px solid ${isCurrent ? color : isPast ? `${color}50` : '#1e293b40'}`,
+                  display: 'flex', alignItems: 'center', justifyContent: 'center',
+                  fontSize: '0.6rem', fontWeight: 'bold',
+                  color: isFuture ? '#334155' : color,
+                  transition: 'all 0.3s ease',
+                  transform: isCurrent ? 'scale(1.15)' : 'scale(1)',
+                  boxShadow: isCurrent ? `0 0 12px ${color}40` : 'none',
+                  opacity: isFuture ? 0.3 : 1,
+                  cursor: 'pointer',
+                }}
+                onMouseEnter={(e) => {
+                  if (!isFuture) {
+                    e.currentTarget.style.transform = 'scale(1.3)';
+                    e.currentTarget.style.boxShadow = `0 0 14px ${color}60`;
+                  }
+                }}
+                onMouseLeave={(e) => {
+                  e.currentTarget.style.transform = isCurrent ? 'scale(1.15)' : 'scale(1)';
+                  e.currentTarget.style.boxShadow = isCurrent ? `0 0 12px ${color}40` : 'none';
+                }}
+              >
                 {isPast ? (basisMatch ? (bitMatch ? '✓' : '✗') : '·') : getParticleVisual(vq)}
               </div>
             );

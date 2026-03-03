@@ -1,6 +1,6 @@
 import React from 'react';
 
-export default function QuantumChannel({ isTransmitting, qubits, onExpand }) {
+export default function QuantumChannel({ isTransmitting, qubits, onExpand, onPhotonClick }) {
   const getParticleVisual = (q) => {
     if (q.aliceBasis === '+') {
       return q.aliceBit === 0 ? "↑" : "→";
@@ -55,7 +55,7 @@ export default function QuantumChannel({ isTransmitting, qubits, onExpand }) {
   );
 
   return (
-    <div className="channel-container" onClick={onExpand} style={{
+    <div className="channel-container" onClick={(e) => { if (e.target === e.currentTarget) onExpand(); }} style={{
       background: '#020617',
       border: '1px solid #1e293b',
       boxShadow: 'inset 0 0 20px rgba(0,0,0,0.5)',
@@ -128,29 +128,45 @@ export default function QuantumChannel({ isTransmitting, qubits, onExpand }) {
            const color = q.aliceBit === 1 ? '#ef4444' : '#3b82f6';
            const symbol = getParticleVisual(q);
            return (
-             <div key={q.id} style={{
-               position: 'absolute', 
-               left: '-50px', /* Start off-screen left */
-               top: '50%', 
-               marginTop: '-15px',
-               width: '30px', 
-               height: '30px', 
-               borderRadius: '50%',
-               background: '#0f172a', 
-               border: `2px solid ${color}`, 
-               boxShadow: `0 0 10px ${color}`,
-               color: color, 
-               display: 'flex', 
-               alignItems: 'center', 
-               justifyContent: 'center',
-               fontSize: '1rem', 
-               fontWeight: 'bold', 
-               zIndex: 10,
-               
-               /* The Travel Animation */
-               animation: `photonTravel ${duration} linear infinite`, 
-               animationDelay: `${i * delayStep}s` 
-             }}>
+             <div
+               key={q.id}
+               onClick={(e) => {
+                 e.stopPropagation();
+                 if (onPhotonClick) onPhotonClick(q);
+               }}
+               title="Click to inspect this photon in 3D"
+               style={{
+                 position: 'absolute',
+                 left: '-50px',
+                 top: '50%',
+                 marginTop: '-15px',
+                 width: '30px',
+                 height: '30px',
+                 borderRadius: '50%',
+                 background: '#0f172a',
+                 border: `2px solid ${color}`,
+                 boxShadow: `0 0 10px ${color}`,
+                 color: color,
+                 display: 'flex',
+                 alignItems: 'center',
+                 justifyContent: 'center',
+                 fontSize: '1rem',
+                 fontWeight: 'bold',
+                 zIndex: 10,
+                 cursor: 'pointer',
+                 /* The Travel Animation */
+                 animation: `photonTravel ${duration} linear infinite`,
+                 animationDelay: `${i * delayStep}s`,
+               }}
+               onMouseEnter={(e) => {
+                 e.currentTarget.style.boxShadow = `0 0 18px ${color}, 0 0 30px ${color}60`;
+                 e.currentTarget.style.transform = 'scale(1.25)';
+               }}
+               onMouseLeave={(e) => {
+                 e.currentTarget.style.boxShadow = `0 0 10px ${color}`;
+                 e.currentTarget.style.transform = 'scale(1)';
+               }}
+             >
                {symbol}
              </div>
            );
@@ -161,9 +177,13 @@ export default function QuantumChannel({ isTransmitting, qubits, onExpand }) {
       <div style={{
         position: 'absolute', bottom: '8px', width: '100%', textAlign: 'center',
         fontSize: '0.65rem', color: '#475569', letterSpacing: '1px',
-        fontFamily: 'monospace', zIndex: 15
+        fontFamily: 'monospace', zIndex: 15,
+        display: 'flex', justifyContent: 'center', gap: '18px',
       }}>
-        🔍 Click to explore equipment
+        <span>🔍 Click channel to explore equipment</span>
+        {isTransmitting && qubits && qubits.length > 0 && (
+          <span style={{ color: '#38bdf860' }}>⚛ Click a photon bubble to inspect in 3D</span>
+        )}
       </div>
     </div>
   );

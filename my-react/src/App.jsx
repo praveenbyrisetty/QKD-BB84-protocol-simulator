@@ -20,6 +20,8 @@ import PrivacyAmpExpanded from './Hack/PrivacyAmpExpanded';
 import EncryptionExpanded from './Hack/EncryptionExpanded';
 import QRLanding from './Hack/QRLanding';
 import EveOverlay from './Hack/EveOverlay';
+import Photon3DModal from './Hack/Photon3DModal';
+import HandGestureControl from './Hack/HandGestureControl';
 
 const BACKEND_URL = ''; // Uses Vite proxy — all requests go through port 5173
 
@@ -60,6 +62,9 @@ function App() {
   
   // Eve overlay state
   const [eveOverlayData, setEveOverlayData] = useState(null);
+
+  // 3D Photon modal state — null = closed, qubit object = open
+  const [photon3D, setPhoton3D] = useState(null);
 
   // --- SOCKET.IO FOR QR CHAT MODE ---
   useEffect(() => {
@@ -326,10 +331,15 @@ function App() {
 
         <section>
           {channelExpanded ? (
-            <QuantumChannelExpanded qubits={qubits} isEveOn={isEveOn} onClose={() => setChannelExpanded(false)} />
+            <QuantumChannelExpanded qubits={qubits} isEveOn={isEveOn} onClose={() => setChannelExpanded(false)} onPhotonClick={(q) => setPhoton3D(q)} />
           ) : (
             <div {...hoverProps('Quantum Channel', 'The fiber optic cable where photons travel. Click to explore the equipment.')}>
-              <QuantumChannel isTransmitting={step >= 1 && !isAborted} qubits={qubits} onExpand={() => setChannelExpanded(true)} />
+              <QuantumChannel
+                isTransmitting={step >= 1 && !isAborted}
+                qubits={qubits}
+                onExpand={() => setChannelExpanded(true)}
+                onPhotonClick={(q) => setPhoton3D(q)}
+              />
             </div>
           )}
         </section>
@@ -512,6 +522,14 @@ function App() {
         />
       )}
 
+      {/* 3D PHOTON VISUALIZATION MODAL */}
+      {photon3D && (
+        <Photon3DModal
+          qubit={photon3D}
+          onClose={() => setPhoton3D(null)}
+        />
+      )}
+
       {/* THE UNIVERSAL BUBBLE */}
       <FixedBubble 
         title={bubbleData.title} 
@@ -520,6 +538,9 @@ function App() {
         y={bubbleData.y} 
         onClose={() => setBubbleData({ title: null, text: null, x: 0, y: 0 })}
       />
+
+      {/* HAND GESTURE CURSOR CONTROL */}
+      <HandGestureControl />
 
     </div>
   );
