@@ -1,73 +1,54 @@
 import React, { useEffect, useRef, useState, useCallback } from 'react';
-
-// MediaPipe CDN scripts (version-pinned for reliability)
-const MP_SCRIPTS = [
-  'https://cdn.jsdelivr.net/npm/@mediapipe/hands@0.4.1675469240/hands.js',
-  'https://cdn.jsdelivr.net/npm/@mediapipe/camera_utils@0.3.1675466862/camera_utils.js',
-];
-
-function loadScript(src) {
-  return new Promise((resolve, reject) => {
-    if (document.querySelector(`script[src="${src}"]`)) { resolve(); return; }
-    const el = document.createElement('script');
-    el.src = src; el.crossOrigin = ''; el.onload = resolve;
-    el.onerror = () => reject(new Error(`Failed: ${src}`));
-    document.head.appendChild(el);
-  });
-}
+import { FilesetResolver, HandLandmarker } from '@mediapipe/tasks-vision';
 
 /* ─────────────────────────────────────────────────────────────────────────────
    GESTURE SUMMARY
    ━━━━━━━━━━━━━━━
    ONE HAND:
-     🤏  Pinch (index + thumb close)       → move cursor, release = click
+     🤏  Pinch (index + thumb close)         → move cursor, release = click
      ✌️  Peace (index + middle up, rest down) → scroll page (hand up/down)
 
    TWO HANDS:
-     🙌  Both palms open                    → rotate 3D (both hands move)
-                                              + zoom (hands apart/together)
+     🙌  Both palms open                      → rotate 3D (both hands move)
+                                               + zoom (hands apart/together)
  ────────────────────────────────────────────────────────────────────────────── */
 
 export default function HandGestureControl() {
-  const [status, setStatus]     = useState('idle'); // idle | loading | active | error
-  const [gesture, setGesture]   = useState('none'); // none | pinch | peace | twoPalm
-  const [cursor, setCursor]     = useState({ x: -300, y: -300, flash: false });
-  const [pinched, setPinched]   = useState(false);
-  const [showCam, setShowCam]   = useState(true);
-  const [fps, setFps]           = useState(0);
-  const [errMsg, setErrMsg]     = useState('');
+  const [status, setStatus]   = useState('idle');   // idle | loading | active | error
+  const [gesture, setGesture] = useState('none');   // none | pinch | peace | twoPalm
+  const [cursor, setCursor]   = useState({ x: -300, y: -300, flash: false });
+  const [pinched, setPinched] = useState(false);
+  const [showCam, setShowCam] = useState(true);
+  const [fps, setFps]         = useState(0);
+  const [errMsg, setErrMsg]   = useState('');
 
-  const videoRef      = useRef(null);
-  const handsRef      = useRef(null);
-  const camRef        = useRef(null);
+  const videoRef       = useRef(null);
+  const landmarkerRef  = useRef(null);  // HandLandmarker instance
+  const rafRef         = useRef(null);  // requestAnimationFrame id
+  const streamRef      = useRef(null);  // MediaStream
+  // NOTE: videoRef is always attached to a single <video> element in the DOM.
 
-  // Gesture tracking refs
-  const prevPinched   = useRef(false);
-  const pinchStart    = useRef(0);
-  const lastCursor    = useRef({ x: -300, y: -300 });
-  const dragActive    = useRef(false);
+  // Gesture tracking
+  const prevPinched      = useRef(false);
+  const pinchStart       = useRef(0);
+  const lastCursor       = useRef({ x: -300, y: -300 });
+  const dragActive       = useRef(false);
+  const prevPeaceY       = useRef(null);
+  const prevTwoPalmMid   = useRef(null);
+  const prevPalmDist     = useRef(null);
 
-  // Two-palm refs
-  const prevTwoPalmMid  = useRef(null); // { x, y }
-  const prevPalmDist    = useRef(null); // distance between palms
+  // FPS counter
+  const frameCount = useRef(0);
+  const fpsTimer   = useRef(null);
 
-  // Peace sign refs
-  const prevPeaceY    = useRef(null);
-
-  // FPS
-  const frameCount    = useRef(0);
-  const fpsTimer      = useRef(null);
-
-  // ── Helper: detect if finger is extended ─────────────────────────────────
+  // ── Helper: is finger extended (tip y < pip y in image coords) ────────────
   const isFingerUp = (lm, tipIdx, pipIdx) => lm[tipIdx].y < lm[pipIdx].y;
 
-  // ── Helper: detect gesture from single hand ──────────────────────────────
+  // ── Single-hand gesture classifier ───────────────────────────────────────
   const detectSingleGesture = useCallback((lm) => {
-    const thumb  = lm[4], index = lm[8];
-    const dist   = Math.hypot(thumb.x - index.x, thumb.y - index.y);
+    const dist = Math.hypot(lm[4].x - lm[8].x, lm[4].y - lm[8].y);
     const isPinch = dist < 0.07;
 
-    // Peace sign: index & middle up, ring & pinky down
     const indexUp  = isFingerUp(lm, 8, 6);
     const middleUp = isFingerUp(lm, 12, 10);
     const ringDown = !isFingerUp(lm, 16, 14);
@@ -79,7 +60,7 @@ export default function HandGestureControl() {
     return 'open';
   }, []);
 
-  // ── Helper: detect if palm is open (most fingers extended) ────────────────
+  // ── Palm open: >= 3 fingers extended ─────────────────────────────────────
   const isPalmOpen = useCallback((lm) => {
     let count = 0;
     if (isFingerUp(lm, 8, 6))  count++;
@@ -89,42 +70,48 @@ export default function HandGestureControl() {
     return count >= 3;
   }, []);
 
-  // ── onResults: called every frame by MediaPipe ────────────────────────────
-  const onResults = useCallback((results) => {
-    frameCount.current++;
-
-    const hands = results.multiHandLandmarks;
-    if (!hands || hands.length === 0) {
-      // No hands → reset everything
-      if (dragActive.current) {
-        document.dispatchEvent(new MouseEvent('mouseup', { bubbles: true, clientX: lastCursor.current.x, clientY: lastCursor.current.y }));
-        dragActive.current = false;
-      }
-      prevPinched.current = false; prevPeaceY.current = null;
-      prevTwoPalmMid.current = null; prevPalmDist.current = null;
-      setPinched(false); setGesture('none');
+  // ── Main frame processor ──────────────────────────────────────────────────
+  const processFrame = useCallback(() => {
+    if (!landmarkerRef.current || !videoRef.current || videoRef.current.readyState < 2) {
+      rafRef.current = requestAnimationFrame(processFrame);
       return;
     }
 
+    frameCount.current++;
+
+    const results = landmarkerRef.current.detectForVideo(videoRef.current, performance.now());
+    const hands = results.landmarks; // Array of landmark arrays
+
     const W = window.innerWidth, H = window.innerHeight;
 
-    // ═══════════════════════════════════════════════════════════════════════
-    //  TWO HANDS DETECTED → rotate + zoom
-    // ═══════════════════════════════════════════════════════════════════════
+    if (!hands || hands.length === 0) {
+      if (dragActive.current) {
+        document.dispatchEvent(new MouseEvent('mouseup', {
+          bubbles: true, clientX: lastCursor.current.x, clientY: lastCursor.current.y,
+        }));
+        dragActive.current = false;
+      }
+      prevPinched.current = false;
+      prevPeaceY.current = null;
+      prevTwoPalmMid.current = null;
+      prevPalmDist.current = null;
+      setPinched(false);
+      setGesture('none');
+      rafRef.current = requestAnimationFrame(processFrame);
+      return;
+    }
+
+    // ═══ TWO OPEN PALMS → rotate + zoom ═══════════════════════════════════
     if (hands.length >= 2 && isPalmOpen(hands[0]) && isPalmOpen(hands[1])) {
       setGesture('twoPalm');
       setPinched(false);
       prevPinched.current = false;
 
-      // Palm centers (wrist landmark 0)
       const p1x = (1 - hands[0][0].x) * W, p1y = hands[0][0].y * H;
       const p2x = (1 - hands[1][0].x) * W, p2y = hands[1][0].y * H;
-
-      const midX = (p1x + p2x) / 2;
-      const midY = (p1y + p2y) / 2;
+      const midX = (p1x + p2x) / 2, midY = (p1y + p2y) / 2;
       const palmDist = Math.hypot(p2x - p1x, p2y - p1y);
 
-      // Update cursor to midpoint
       setCursor({ x: midX, y: midY, flash: false });
       lastCursor.current = { x: midX, y: midY };
 
@@ -132,7 +119,6 @@ export default function HandGestureControl() {
         const dx = midX - prevTwoPalmMid.current.x;
         const dy = midY - prevTwoPalmMid.current.y;
 
-        // Rotation: dispatch mousedown + mousemove
         if (!dragActive.current && (Math.abs(dx) > 2 || Math.abs(dy) > 2)) {
           const el = document.elementFromPoint(midX, midY);
           if (el) {
@@ -144,20 +130,15 @@ export default function HandGestureControl() {
           document.dispatchEvent(new MouseEvent('mousemove', { bubbles: true, cancelable: true, clientX: midX, clientY: midY, view: window }));
         }
 
-        // Zoom: palm distance changing
         if (prevPalmDist.current !== null) {
-          const distDelta = palmDist - prevPalmDist.current;
-          // Only trigger if change is significant
-          if (Math.abs(distDelta) > 3) {
+          const delta = palmDist - prevPalmDist.current;
+          if (Math.abs(delta) > 3) {
             const el = document.elementFromPoint(midX, midY);
-            if (el) {
-              el.dispatchEvent(new WheelEvent('wheel', {
-                bubbles: true, cancelable: true,
-                clientX: midX, clientY: midY,
-                deltaY: -distDelta * 2.5, // spread apart = zoom in (negative delta)
-                deltaMode: 0,
-              }));
-            }
+            if (el) el.dispatchEvent(new WheelEvent('wheel', {
+              bubbles: true, cancelable: true,
+              clientX: midX, clientY: midY,
+              deltaY: -delta * 2.5, deltaMode: 0,
+            }));
           }
         }
       }
@@ -165,10 +146,11 @@ export default function HandGestureControl() {
       prevTwoPalmMid.current = { x: midX, y: midY };
       prevPalmDist.current = palmDist;
       prevPeaceY.current = null;
+      rafRef.current = requestAnimationFrame(processFrame);
       return;
     }
 
-    // If we were in two-palm mode and now aren't, release drag
+    // Release two-palm drag if we drop out
     if (prevTwoPalmMid.current !== null) {
       if (dragActive.current) {
         document.dispatchEvent(new MouseEvent('mouseup', { bubbles: true, clientX: lastCursor.current.x, clientY: lastCursor.current.y }));
@@ -178,57 +160,47 @@ export default function HandGestureControl() {
       prevPalmDist.current = null;
     }
 
-    // ═══════════════════════════════════════════════════════════════════════
-    //  SINGLE HAND → pinch (cursor+click) or peace (scroll)
-    // ═══════════════════════════════════════════════════════════════════════
+    // ═══ SINGLE HAND ══════════════════════════════════════════════════════
     const lm = hands[0];
-    const singleGesture = detectSingleGesture(lm);
+    const sg = detectSingleGesture(lm);
 
-    // Cursor always tracks index fingertip (mirrored)
+    // Cursor tracks index fingertip (mirrored)
     const sx = Math.round((1 - lm[8].x) * W);
     const sy = Math.round(lm[8].y * H);
     setCursor({ x: sx, y: sy, flash: false });
     lastCursor.current = { x: sx, y: sy };
 
-    // Dispatch mousemove for hover
+    // Hover dispatch
     const hovEl = document.elementFromPoint(sx, sy);
-    if (hovEl) {
-      hovEl.dispatchEvent(new MouseEvent('mousemove', { bubbles: true, cancelable: true, clientX: sx, clientY: sy, view: window }));
-    }
+    if (hovEl) hovEl.dispatchEvent(new MouseEvent('mousemove', { bubbles: true, cancelable: true, clientX: sx, clientY: sy, view: window }));
 
-    // ── PEACE = scroll ───────────────────────────────────────────────────
-    if (singleGesture === 'peace') {
+    // ── PEACE → scroll ───────────────────────────────────────────────────
+    if (sg === 'peace') {
       setGesture('peace');
       setPinched(false);
       prevPinched.current = false;
-
-      // Track Y movement of mid-finger for scroll direction
       const peaceY = (lm[8].y + lm[12].y) / 2 * H;
       if (prevPeaceY.current !== null) {
         const dy = peaceY - prevPeaceY.current;
-        if (Math.abs(dy) > 2) {
-          window.scrollBy({ top: dy * 3.5, behavior: 'auto' });
-        }
+        if (Math.abs(dy) > 2) window.scrollBy({ top: dy * 3.5, behavior: 'auto' });
       }
       prevPeaceY.current = peaceY;
+      rafRef.current = requestAnimationFrame(processFrame);
       return;
     }
     prevPeaceY.current = null;
 
-    // ── PINCH = cursor + click/drag ──────────────────────────────────────
-    const thumb = lm[4], index = lm[8];
-    const dist  = Math.hypot(thumb.x - index.x, thumb.y - index.y);
+    // ── PINCH → cursor + click / drag ────────────────────────────────────
+    const dist = Math.hypot(lm[4].x - lm[8].x, lm[4].y - lm[8].y);
     const isPinch = dist < 0.07;
 
     setGesture(isPinch ? 'pinch' : 'none');
     setPinched(isPinch);
 
     if (isPinch && !prevPinched.current) {
-      // Pinch just started
       pinchStart.current = Date.now();
     }
 
-    // Long pinch → drag mode
     if (isPinch && prevPinched.current) {
       const held = Date.now() - pinchStart.current;
       if (held > 350 && !dragActive.current) {
@@ -243,15 +215,12 @@ export default function HandGestureControl() {
       }
     }
 
-    // Release pinch
     if (!isPinch && prevPinched.current) {
       const held = Date.now() - pinchStart.current;
       if (dragActive.current) {
-        // Was dragging → mouseup
         document.dispatchEvent(new MouseEvent('mouseup', { bubbles: true, clientX: sx, clientY: sy, view: window }));
         dragActive.current = false;
       } else if (held < 350) {
-        // Quick pinch → click
         const target = document.elementFromPoint(sx, sy);
         if (target) {
           target.dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true, clientX: sx, clientY: sy, view: window }));
@@ -262,65 +231,73 @@ export default function HandGestureControl() {
     }
 
     prevPinched.current = isPinch;
+    rafRef.current = requestAnimationFrame(processFrame);
   }, [detectSingleGesture, isPalmOpen]);
 
   // ── Activate ──────────────────────────────────────────────────────────────
   const activate = useCallback(async () => {
     setStatus('loading'); setErrMsg('');
     try {
-      for (const src of MP_SCRIPTS) await loadScript(src);
+      const vision = await FilesetResolver.forVisionTasks(
+        'https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@latest/wasm'
+      );
 
+      const landmarker = await HandLandmarker.createFromOptions(vision, {
+        baseOptions: {
+          modelAssetPath: 'https://storage.googleapis.com/mediapipe-models/hand_landmarker/hand_landmarker/float16/1/hand_landmarker.task',
+          delegate: 'GPU',
+        },
+        runningMode: 'VIDEO',
+        numHands: 2,
+        minHandDetectionConfidence: 0.65,
+        minHandPresenceConfidence: 0.55,
+        minTrackingConfidence: 0.55,
+      });
+
+      landmarkerRef.current = landmarker;
+
+      // Camera
       const stream = await navigator.mediaDevices.getUserMedia({
         video: { width: 640, height: 480, facingMode: 'user' }, audio: false,
       });
+      streamRef.current = stream;
+
       if (!videoRef.current) throw new Error('Video element not ready');
       videoRef.current.srcObject = stream;
       await videoRef.current.play();
 
-      const hands = new window.Hands({
-        locateFile: (f) => `https://cdn.jsdelivr.net/npm/@mediapipe/hands@0.4.1675469240/${f}`,
-      });
-      hands.setOptions({
-        maxNumHands:            2,
-        modelComplexity:        1,
-        minDetectionConfidence: 0.72,
-        minTrackingConfidence:  0.55,
-      });
-      hands.onResults(onResults);
-      handsRef.current = hands;
-
-      const cam = new window.Camera(videoRef.current, {
-        onFrame: async () => {
-          if (handsRef.current && videoRef.current) {
-            await handsRef.current.send({ image: videoRef.current });
-          }
-        },
-        width: 640, height: 480,
-      });
-      cam.start();
-      camRef.current = cam;
-
+      // FPS counter
       fpsTimer.current = setInterval(() => {
-        setFps(frameCount.current); frameCount.current = 0;
+        setFps(frameCount.current);
+        frameCount.current = 0;
       }, 1000);
 
       setStatus('active');
+      rafRef.current = requestAnimationFrame(processFrame);
     } catch (err) {
       setStatus('error');
       setErrMsg(err.message || 'Camera access denied or MediaPipe failed.');
       console.error('[HandGesture]', err);
     }
-  }, [onResults]);
+  }, [processFrame]);
 
   // ── Deactivate ────────────────────────────────────────────────────────────
   const deactivate = useCallback(() => {
+    cancelAnimationFrame(rafRef.current);
+    rafRef.current = null;
     clearInterval(fpsTimer.current);
-    camRef.current?.stop?.(); camRef.current = null;
-    handsRef.current?.close?.(); handsRef.current = null;
-    if (videoRef.current?.srcObject) {
-      videoRef.current.srcObject.getTracks().forEach(t => t.stop());
+
+    landmarkerRef.current?.close?.();
+    landmarkerRef.current = null;
+
+    if (streamRef.current) {
+      streamRef.current.getTracks().forEach(t => t.stop());
+      streamRef.current = null;
+    }
+    if (videoRef.current) {
       videoRef.current.srcObject = null;
     }
+
     setStatus('idle'); setPinched(false); setGesture('none');
     setCursor({ x: -300, y: -300, flash: false }); setFps(0);
     prevPinched.current = false; dragActive.current = false;
@@ -331,15 +308,13 @@ export default function HandGestureControl() {
   useEffect(() => () => deactivate(), [deactivate]);
 
   // ── Render ────────────────────────────────────────────────────────────────
-  const isActive = status === 'active';
+  const isActive  = status === 'active';
   const isLoading = status === 'loading';
 
-  // Cursor colors based on gesture
   const cursorColor = gesture === 'twoPalm' ? '#f59e0b'
                     : gesture === 'peace'   ? '#a78bfa'
-                    : pinched              ? '#4ade80'
+                    : pinched               ? '#4ade80'
                     : '#818cf8';
-
 
   return (
     <>
@@ -354,19 +329,22 @@ export default function HandGestureControl() {
             background: 'rgba(239,68,68,0.15)', backdropFilter: 'blur(10px)',
             border: '1px solid rgba(239,68,68,0.4)', borderRadius: 10,
             padding: '8px 14px', fontSize: '0.72rem', color: '#fca5a5',
-            maxWidth: 240, textAlign: 'right', lineHeight: 1.4,
-          }}>⚠ {errMsg || 'Camera error'}</div>
+            maxWidth: 260, textAlign: 'right', lineHeight: 1.4,
+          }}>⚠ {errMsg || 'Camera/MediaPipe error'}</div>
         )}
 
-        {/* Webcam preview — sits inside the flex column */}
-        {isActive && showCam && (
-          <div style={{
-            position: 'relative',
-            borderRadius: 12, overflow: 'hidden',
-            border: `1.5px solid ${gesture === 'twoPalm' ? 'rgba(245,158,11,0.7)' : gesture === 'peace' ? 'rgba(167,139,250,0.7)' : pinched ? 'rgba(34,197,94,0.7)' : 'rgba(99,102,241,0.40)'}`,
-            boxShadow: '0 4px 20px rgba(0,0,0,0.5)',
-            transition: 'border-color 0.2s', background: '#020617',
-          }}>
+        {/* Webcam preview — video element always rendered, just hidden/shown */}
+        <div style={{
+          position: 'relative',
+          borderRadius: 12, overflow: 'hidden',
+          border: `1.5px solid ${gesture === 'twoPalm' ? 'rgba(245,158,11,0.7)' : gesture === 'peace' ? 'rgba(167,139,250,0.7)' : pinched ? 'rgba(34,197,94,0.7)' : 'rgba(99,102,241,0.40)'}`,
+          boxShadow: '0 4px 20px rgba(0,0,0,0.5)',
+          transition: 'border-color 0.2s, opacity 0.2s', background: '#020617',
+          display: isActive ? 'block' : 'none',
+          opacity: showCam ? 1 : 0,
+          width: showCam ? 'auto' : 0,
+          height: showCam ? 'auto' : 0,
+        }}>
             <video ref={videoRef} width={180} height={135} playsInline muted
               style={{ display: 'block', transform: 'scaleX(-1)' }} />
             {/* Gesture badge */}
@@ -399,7 +377,6 @@ export default function HandGestureControl() {
                   : 'Pinch = click · ✌️ = scroll · 🙌 = rotate'}
             </div>
           </div>
-        )}
 
         {/* Show/hide cam toggle */}
         {isActive && (
@@ -439,6 +416,8 @@ export default function HandGestureControl() {
         </button>
       </div>
 
+
+
       {/* ── Custom cursor ── */}
       {isActive && (
         <div style={{
@@ -446,7 +425,6 @@ export default function HandGestureControl() {
           transform: 'translate(-50%,-50%)',
           zIndex: 999999, pointerEvents: 'none',
         }}>
-          {/* Outer ring */}
           <div style={{
             width: gesture === 'twoPalm' ? 50 : pinched ? 28 : 38,
             height: gesture === 'twoPalm' ? 50 : pinched ? 28 : 38,

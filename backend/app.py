@@ -1,12 +1,13 @@
 from flask import Flask, request, jsonify
 from flask_cors import CORS
-from flask_socketio import SocketIO, emit, join_room, leave_room
 import secrets
 import hashlib
 import uuid
 import socket
 import urllib.request
 import json as json_lib
+import time
+import threading
 
 # --- QISKIT IMPORTS ---
 from qiskit import QuantumCircuit
@@ -14,13 +15,13 @@ from qiskit_aer import AerSimulator
 
 app = Flask(__name__)
 CORS(app, resources={r"/*": {"origins": "*"}})
-socketio = SocketIO(app, cors_allowed_origins="*", async_mode='threading',
-                   ping_interval=40, ping_timeout=60)
 
 simulator = AerSimulator()
 
 # --- ROOM MANAGEMENT ---
-rooms = {}  # { room_id: { eve: bool, users: [{sid, role}], numBits: 20 } }
+# { room_id: { eve, numBits, users: [{user_id, role}], messages: [...], last_activity } }
+rooms = {}
+rooms_lock = threading.Lock()
 
 
 def get_local_ip():
@@ -38,7 +39,7 @@ def get_local_ip():
 def get_ngrok_url():
     """Check if ngrok is running and return its public URL."""
     try:
-        req = urllib.request.urlopen("http://localhost:4040/api/tunnels", timeout=1)
+        req = urllib.request.urlopen("http://localhost:4040/api/tunnels", timeout=2)
         data = json_lib.loads(req.read().decode())
         tunnels = data.get("tunnels", [])
         for t in tunnels:
@@ -109,7 +110,6 @@ def run_bb84(n, eve, key_bits_needed=64):
     final_key = [1, 0, 1, 1]
     if alice_key and not aborted:
         raw = "".join(str(b) for b in alice_key)
-        # Generate enough key bits by hashing with multiple rounds
         key_hex_needed = (key_bits_needed + 3) // 4
         hash_hex = ""
         counter = 0
@@ -149,6 +149,14 @@ def decrypt_message(cipher_hex, key):
     return ''.join(chars)
 
 
+def add_room_message(room_id, msg):
+    """Thread-safe append to room messages."""
+    with rooms_lock:
+        if room_id in rooms:
+            rooms[room_id]["messages"].append(msg)
+            rooms[room_id]["last_activity"] = time.time()
+
+
 # --- REST ROUTES (Solo Mode) ---
 @app.route("/bb84", methods=["POST"])
 def bb84_protocol():
@@ -185,12 +193,14 @@ def create_room():
     room_id = str(uuid.uuid4())[:8]
     eve_enabled = data.get("eve", False)
     num_bits = data.get("numBits", 50)
-    rooms[room_id] = {
-        "eve": eve_enabled,
-        "numBits": num_bits,
-        "users": [],       # Mobile users (Alice, Bob)
-        "desktops": [],    # Desktop observers
-    }
+    with rooms_lock:
+        rooms[room_id] = {
+            "eve": eve_enabled,
+            "numBits": num_bits,
+            "users": [],
+            "messages": [],
+            "last_activity": time.time(),
+        }
     local_ip = get_local_ip()
     ngrok_url = get_ngrok_url()
     result = {
@@ -205,210 +215,275 @@ def create_room():
 
 @app.route("/room-status/<room_id>", methods=["GET"])
 def room_status(room_id):
-    if room_id not in rooms:
-        return jsonify({"error": "Room not found"}), 404
-    room = rooms[room_id]
-    users = [{"role": u["role"]} for u in room["users"]]
-    return jsonify({
-        "room_id": room_id,
-        "eve": room["eve"],
-        "numBits": room["numBits"],
-        "users": users,
-        "user_count": len(users),  # Only mobile users count
-    })
-
-
-# --- SOCKET.IO EVENTS ---
-@socketio.on("connect")
-def handle_connect():
-    print(f"[WS] Client connected: {request.sid}")
-
-
-@socketio.on("disconnect")
-def handle_disconnect():
-    sid = request.sid
-    print(f"[WS] Client disconnected: {sid}")
-    for room_id, room in list(rooms.items()):
-        # Check desktop observers
-        for d in room["desktops"]:
-            if d["sid"] == sid:
-                room["desktops"].remove(d)
-                leave_room(room_id)
-                print(f"[WS] Desktop left room {room_id}")
-                return
-        # Check mobile users
-        for user in room["users"]:
-            if user["sid"] == sid:
-                room["users"].remove(user)
-                emit("user_disconnected", {
-                    "role": user["role"],
-                    "user_count": len(room["users"])
-                }, to=room_id)
-                leave_room(room_id)
-                print(f"[WS] {user['role']} left room {room_id}")
-                if len(room["users"]) == 0 and len(room["desktops"]) == 0:
-                    del rooms[room_id]
-                    print(f"[WS] Room {room_id} deleted (empty)")
-                return
-
-
-@socketio.on("join_room")
-def handle_join_room(data):
-    room_id = data.get("room_id")
-    client_type = data.get("type", "mobile")  # 'desktop' or 'mobile'
-    sid = request.sid
-
-    if room_id not in rooms:
-        emit("error", {"message": "Room not found"})
-        return
-
-    room = rooms[room_id]
-
-    # Desktop joins as observer (doesn't take user slot)
-    if client_type == "desktop":
-        room["desktops"].append({"sid": sid})
-        join_room(room_id)
-        emit("room_joined", {
-            "role": "desktop",
+    with rooms_lock:
+        if room_id not in rooms:
+            return jsonify({"error": "Room not found"}), 404
+        room = rooms[room_id]
+        users = [{"role": u["role"]} for u in room["users"]]
+        return jsonify({
             "room_id": room_id,
             "eve": room["eve"],
-            "user_count": len(room["users"]),
+            "numBits": room["numBits"],
+            "users": users,
+            "user_count": len(users),
         })
-        print(f"[WS] Desktop observer joined room {room_id}")
-        return
-
-    # Mobile user
-    if len(room["users"]) >= 2:
-        emit("error", {"message": "Room is full (max 2 users)"})
-        return
-
-    for user in room["users"]:
-        if user["sid"] == sid:
-            emit("error", {"message": "Already in this room"})
-            return
-
-    role = "Alice" if len(room["users"]) == 0 else "Bob"
-    room["users"].append({"sid": sid, "role": role})
-    join_room(room_id)
-
-    emit("room_joined", {
-        "role": role,
-        "room_id": room_id,
-        "eve": room["eve"],
-        "user_count": len(room["users"]),
-    })
-
-    emit("user_connected", {
-        "role": role,
-        "user_count": len(room["users"]),
-    }, to=room_id)
-
-    print(f"[WS] {role} joined room {room_id} (users: {len(room['users'])})")
 
 
-@socketio.on("send_message")
-def handle_send_message(data):
+@app.route("/join-room", methods=["POST"])
+def join_room():
+    """Mobile or desktop client joins a room via REST."""
+    data = request.get_json() or {}
     room_id = data.get("room_id")
+    user_id = data.get("user_id")
+    client_type = data.get("type", "mobile")  # 'desktop' or 'mobile'
+
+    if not room_id or not user_id:
+        return jsonify({"error": "room_id and user_id are required"}), 400
+
+    with rooms_lock:
+        if room_id not in rooms:
+            return jsonify({"error": "Room not found"}), 404
+
+        room = rooms[room_id]
+
+        # Desktop joins as observer (doesn't take user slot)
+        if client_type == "desktop":
+            # Don't double-add
+            for u in room["users"]:
+                if u.get("user_id") == user_id:
+                    return jsonify({
+                        "role": "desktop",
+                        "room_id": room_id,
+                        "eve": room["eve"],
+                        "user_count": len([u for u in room["users"] if u.get("role") != "desktop"]),
+                    })
+            room["users"].append({"user_id": user_id, "role": "desktop"})
+            print(f"[REST] Desktop observer joined room {room_id}")
+            return jsonify({
+                "role": "desktop",
+                "room_id": room_id,
+                "eve": room["eve"],
+                "user_count": len([u for u in room["users"] if u.get("role") != "desktop"]),
+            })
+
+        # Check if user already joined
+        for u in room["users"]:
+            if u["user_id"] == user_id:
+                mobile_count = len([u for u in room["users"] if u.get("role") not in ("desktop",)])
+                return jsonify({
+                    "role": u["role"],
+                    "room_id": room_id,
+                    "eve": room["eve"],
+                    "user_count": mobile_count,
+                })
+
+        # Count mobile users
+        mobile_users = [u for u in room["users"] if u.get("role") not in ("desktop",)]
+        if len(mobile_users) >= 2:
+            return jsonify({"error": "Room is full (max 2 users)"}), 400
+
+        role = "Alice" if len(mobile_users) == 0 else "Bob"
+        room["users"].append({"user_id": user_id, "role": role})
+        room["last_activity"] = time.time()
+
+        mobile_count = len([u for u in room["users"] if u.get("role") not in ("desktop",)])
+
+        # Add system message
+        room["messages"].append({
+            "type": "user_connected",
+            "role": role,
+            "user_count": mobile_count,
+            "timestamp": time.time(),
+        })
+
+        print(f"[REST] {role} joined room {room_id} (users: {mobile_count})")
+
+        return jsonify({
+            "role": role,
+            "room_id": room_id,
+            "eve": room["eve"],
+            "user_count": mobile_count,
+        })
+
+
+@app.route("/leave-room", methods=["POST"])
+def leave_room():
+    """Client leaves a room."""
+    data = request.get_json() or {}
+    room_id = data.get("room_id")
+    user_id = data.get("user_id")
+
+    if not room_id or not user_id:
+        return jsonify({"error": "room_id and user_id are required"}), 400
+
+    with rooms_lock:
+        if room_id not in rooms:
+            return jsonify({"ok": True})
+
+        room = rooms[room_id]
+        role = None
+        for u in room["users"]:
+            if u["user_id"] == user_id:
+                role = u["role"]
+                room["users"].remove(u)
+                break
+
+        if role and role != "desktop":
+            mobile_count = len([u for u in room["users"] if u.get("role") not in ("desktop",)])
+            room["messages"].append({
+                "type": "user_disconnected",
+                "role": role,
+                "user_count": mobile_count,
+                "timestamp": time.time(),
+            })
+            print(f"[REST] {role} left room {room_id}")
+
+        # Clean up empty rooms
+        if len(room["users"]) == 0:
+            del rooms[room_id]
+            print(f"[REST] Room {room_id} deleted (empty)")
+
+    return jsonify({"ok": True})
+
+
+@app.route("/send-message", methods=["POST"])
+def send_message():
+    """Mobile user sends a message. Runs BB84 synchronously."""
+    data = request.get_json() or {}
+    room_id = data.get("room_id")
+    user_id = data.get("user_id")
     message = data.get("message", "")
-    sender_sid = request.sid
 
-    if room_id not in rooms:
-        emit("error", {"message": "Room not found"})
-        return
+    if not room_id or not user_id or not message:
+        return jsonify({"error": "room_id, user_id, and message are required"}), 400
 
-    room = rooms[room_id]
+    with rooms_lock:
+        if room_id not in rooms:
+            return jsonify({"error": "Room not found"}), 404
+        room = rooms[room_id]
+        # Find sender role
+        sender_role = None
+        for u in room["users"]:
+            if u["user_id"] == user_id:
+                sender_role = u["role"]
+                break
+        if not sender_role:
+            return jsonify({"error": "You are not in this room"}), 403
+        eve = room["eve"]
 
-    # Find sender role
-    sender_role = None
-    for user in room["users"]:
-        if user["sid"] == sender_sid:
-            sender_role = user["role"]
-            break
-
-    if not sender_role:
-        emit("error", {"message": "You are not in this room"})
-        return
-
-    # Determine receiver role
-    receiver_role = "Bob" if sender_role == "Alice" else "Alice"
-
-    print(f"[CHAT] {sender_role} says: '{message}' (eve={room['eve']})")
-
-    # Auto-calculate qubits from message length
+    # Run BB84 outside lock (CPU-intensive)
     msg_bits_needed = len(message) * 8
-    # Need ~3x qubits because sifting keeps ~50%, plus safety margin
     num_qubits = max(msg_bits_needed * 3, 50)
-
+    print(f"[CHAT] {sender_role} says: '{message}' (eve={eve})")
     print(f"[CHAT] Message needs {msg_bits_needed} bits → using {num_qubits} qubits")
 
-    # Run BB84 in a background thread so we don't block the Socket.IO event loop
-    # (blocking it causes heartbeat timeouts and dropped connections)
-    def do_bb84():
-        # 1. Run BB84 protocol
-        bb84_data = run_bb84(num_qubits, room["eve"], key_bits_needed=msg_bits_needed)
+    bb84_data = run_bb84(num_qubits, eve, key_bits_needed=msg_bits_needed)
 
-        # 1.5. If Eve is active, notify the room about interception
-        if room["eve"]:
-            garbled = hashlib.md5(message.encode()).hexdigest()[:len(message)].upper()
-            eve_matched = sum(1 for i in range(num_qubits) if bb84_data["eve_bases"][i] == bb84_data["alice_bases"][i])
-            socketio.emit("eve_intercepting", {
-                "sender": sender_role,
-                "qubits_intercepted": num_qubits,
-                "qubits_correct_basis": eve_matched,
-                "garbled_preview": garbled,
-                "qber": bb84_data["qber"],
-            }, to=room_id)
-            print(f"[EVE] Intercepted {num_qubits} qubits, matched basis on {eve_matched}")
-
-        # 2. Send BB84 results to desktop for visualization
-        socketio.emit("bb84_result", {
-            "bb84_data": bb84_data,
+    # If Eve is active, add interception message
+    if eve:
+        garbled = hashlib.md5(message.encode()).hexdigest()[:len(message)].upper()
+        eve_matched = sum(1 for i in range(num_qubits) if bb84_data["eve_bases"][i] == bb84_data["alice_bases"][i])
+        eve_msg = {
+            "type": "eve_intercepting",
             "sender": sender_role,
-            "message": message,
-            "num_qubits": num_qubits,
-        }, to=room_id)
+            "qubits_intercepted": num_qubits,
+            "qubits_correct_basis": eve_matched,
+            "garbled_preview": garbled,
+            "qber": bb84_data["qber"],
+            "timestamp": time.time(),
+        }
+        add_room_message(room_id, eve_msg)
+        print(f"[EVE] Intercepted {num_qubits} qubits, matched basis on {eve_matched}")
 
-        # 3. If BB84 aborted (Eve detected), block the message
-        if bb84_data["aborted"]:
-            garbled = hashlib.md5(message.encode()).hexdigest()[:16].upper()
-            socketio.emit("message_blocked", {
-                "sender": sender_role,
-                "reason": f"Eavesdropping detected! QBER: {bb84_data['qber']*100:.1f}%",
-                "eve_saw": garbled,
-            }, to=room_id)
-            print(f"[CHAT] BLOCKED — Eve detected (QBER: {bb84_data['qber']*100:.1f}%)")
-            return
+    # Add BB84 result for desktop visualization
+    bb84_msg = {
+        "type": "bb84_result",
+        "bb84_data": bb84_data,
+        "sender": sender_role,
+        "message": message,
+        "num_qubits": num_qubits,
+        "timestamp": time.time(),
+    }
+    add_room_message(room_id, bb84_msg)
 
-        # 4. Encrypt the message
-        cipher_hex, error = encrypt_message(message, bb84_data["final_key"])
-        if error:
-            socketio.emit("message_error", {"error": error}, to=sender_sid)
-            return
-
-        # 5. Decrypt the message
-        decrypted = decrypt_message(cipher_hex, bb84_data["final_key"])
-
-        # 6. Send encryption details to desktop for visualization
-        socketio.emit("encryption_result", {
-            "cipher_text": cipher_hex,
-            "decrypted_message": decrypted,
+    # If BB84 aborted (Eve detected), block the message
+    if bb84_data["aborted"]:
+        garbled = hashlib.md5(message.encode()).hexdigest()[:16].upper()
+        blocked_msg = {
+            "type": "message_blocked",
             "sender": sender_role,
-        }, to=room_id)
+            "reason": f"Eavesdropping detected! QBER: {bb84_data['qber']*100:.1f}%",
+            "eve_saw": garbled,
+            "timestamp": time.time(),
+        }
+        add_room_message(room_id, blocked_msg)
+        print(f"[CHAT] BLOCKED — Eve detected (QBER: {bb84_data['qber']*100:.1f}%)")
+        return jsonify({"status": "blocked", "reason": blocked_msg["reason"]})
 
-        # 7. Deliver the message to all users in the room
-        socketio.emit("message_delivered", {
-            "sender": sender_role,
-            "message": decrypted,
-            "cipher_text": cipher_hex,
-            "timestamp": str(uuid.uuid4())[:8],
-        }, to=room_id)
+    # Encrypt + Decrypt
+    cipher_hex, error = encrypt_message(message, bb84_data["final_key"])
+    if error:
+        return jsonify({"error": error}), 400
 
-        print(f"[CHAT] Message delivered: {sender_role} → {receiver_role}")
+    decrypted = decrypt_message(cipher_hex, bb84_data["final_key"])
 
-    socketio.start_background_task(do_bb84)
+    # Add encryption result for desktop
+    enc_msg = {
+        "type": "encryption_result",
+        "cipher_text": cipher_hex,
+        "decrypted_message": decrypted,
+        "sender": sender_role,
+        "timestamp": time.time(),
+    }
+    add_room_message(room_id, enc_msg)
+
+    # Add delivered message
+    delivered_msg = {
+        "type": "message_delivered",
+        "sender": sender_role,
+        "message": decrypted,
+        "cipher_text": cipher_hex,
+        "timestamp": time.time(),
+    }
+    add_room_message(room_id, delivered_msg)
+
+    receiver_role = "Bob" if sender_role == "Alice" else "Alice"
+    print(f"[CHAT] Message delivered: {sender_role} → {receiver_role}")
+
+    return jsonify({"status": "delivered", "message": delivered_msg})
+
+
+@app.route("/room-messages/<room_id>", methods=["GET"])
+def room_messages(room_id):
+    """Poll for new messages since a given index."""
+    since = request.args.get("since", 0, type=int)
+
+    with rooms_lock:
+        if room_id not in rooms:
+            return jsonify({"error": "Room not found"}), 404
+        room = rooms[room_id]
+        messages = room["messages"][since:]
+        mobile_count = len([u for u in room["users"] if u.get("role") not in ("desktop",)])
+        return jsonify({
+            "messages": messages,
+            "total": len(room["messages"]),
+            "user_count": mobile_count,
+        })
+
+
+@app.route("/heartbeat", methods=["POST"])
+def heartbeat():
+    """Keep-alive for clients — updates last_activity."""
+    data = request.get_json() or {}
+    room_id = data.get("room_id")
+    if room_id and room_id in rooms:
+        with rooms_lock:
+            if room_id in rooms:
+                rooms[room_id]["last_activity"] = time.time()
+    return jsonify({"ok": True})
 
 
 if __name__ == "__main__":
     print(f"\n🌐 Local IP: {get_local_ip()}")
-    print(f"🚀 Starting server on port 5000...\n")
-    socketio.run(app, host="0.0.0.0", port=5000, debug=False, use_reloader=False)
+    print(f"🚀 Starting server on port 5000 (pure REST, no WebSockets)...\n")
+    app.run(host="0.0.0.0", port=5000, debug=False, threaded=True)

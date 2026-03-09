@@ -1,13 +1,17 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { useParams } from 'react-router-dom';
-import { io } from 'socket.io-client';
 import './MobileChat.css';
 
-const BACKEND_URL = ''; // Uses Vite proxy — all requests go through port 5173
+// Detect backend URL: use the current origin (works with ngrok and Vite proxy)
+const BACKEND_URL = '';
+
+function generateUserId() {
+  return 'mob_' + Math.random().toString(36).substr(2, 9);
+}
 
 export default function MobileChat() {
   const { roomId } = useParams();
-  const [socket, setSocket] = useState(null);
+  const [userId] = useState(() => generateUserId());
   const [role, setRole] = useState(null);    // 'Alice' or 'Bob'
   const [connected, setConnected] = useState(false);
   const [userCount, setUserCount] = useState(0);
@@ -17,126 +21,165 @@ export default function MobileChat() {
   const [isEncrypting, setIsEncrypting] = useState(false);
   const [error, setError] = useState(null);
   const messagesEndRef = useRef(null);
+  const msgIndexRef = useRef(0);  // Track last seen message index
+  const pollRef = useRef(null);
 
   // Auto-scroll to bottom
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
   }, [messages]);
 
-  // Connect to backend
+  // Join room on mount
   useEffect(() => {
-    const s = io(BACKEND_URL, {
-      transports: ['polling', 'websocket'],
-      timeout: 15000,
-      reconnectionAttempts: 5,
-      extraHeaders: {
-        'ngrok-skip-browser-warning': 'true',
-      },
-    });
-    setSocket(s);
+    let cancelled = false;
 
-    // Connection timeout — if backend unreachable (e.g. firewall blocks port 5000)
-    const connectTimeout = setTimeout(() => {
-      if (!s.connected) {
+    async function joinRoom() {
+      try {
+        const res = await fetch(`${BACKEND_URL}/join-room`, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'ngrok-skip-browser-warning': 'true',
+          },
+          body: JSON.stringify({ room_id: roomId, user_id: userId, type: 'mobile' }),
+        });
+
+        if (!res.ok) {
+          const data = await res.json();
+          throw new Error(data.error || `HTTP ${res.status}`);
+        }
+
+        const data = await res.json();
+        if (cancelled) return;
+
+        setRole(data.role);
+        setConnected(true);
+        setUserCount(data.user_count);
+        setEveEnabled(data.eve);
+        console.log(`[Mobile] Joined as ${data.role}`);
+      } catch (err) {
+        if (cancelled) return;
+        console.error('[Mobile] Join failed:', err);
         setError(
-          `Cannot reach backend at ${BACKEND_URL}.\n\nMost likely cause: Windows Firewall is blocking port 5000.\n\nFix: Run this in PowerShell as Administrator on the PC:\n\nnetsh advfirewall firewall add rule name="Flask 5000" dir=in action=allow protocol=TCP localport=5000\n\nThen restart the Flask server and scan the QR again.`
+          `Cannot reach backend.\n\nMake sure both the Flask server (port 5000) and Vite dev server (port 5173) are running, and ngrok is tunneling port 5173.`
         );
-        s.disconnect();
       }
-    }, 15000);
+    }
 
-    s.on('connect', () => {
-      clearTimeout(connectTimeout);
-      console.log('[Mobile] Connected to backend');
-      s.emit('join_room', { room_id: roomId });
-    });
+    joinRoom();
 
-    s.on('connect_error', () => {
-      clearTimeout(connectTimeout);
-      setError(
-        `Cannot reach backend at ${BACKEND_URL}.\n\nMost likely cause: Windows Firewall is blocking port 5000.\n\nFix: Run this in PowerShell as Administrator on the PC:\n\nnetsh advfirewall firewall add rule name="Flask 5000" dir=in action=allow protocol=TCP localport=5000\n\nThen restart the Flask server and scan the QR again.`
-      );
-    });
-
-    s.on('room_joined', (data) => {
-      setRole(data.role);
-      setConnected(true);
-      setUserCount(data.user_count);
-      setEveEnabled(data.eve);
-      console.log(`[Mobile] Joined as ${data.role}`);
-    });
-
-    s.on('user_connected', (data) => {
-      setUserCount(data.user_count);
-      setMessages(prev => [...prev, {
-        type: 'system',
-        text: `${data.role} has joined the chat`,
-      }]);
-    });
-
-    s.on('user_disconnected', (data) => {
-      setUserCount(data.user_count);
-      setMessages(prev => [...prev, {
-        type: 'system',
-        text: `${data.role} has left the chat`,
-      }]);
-    });
-
-    s.on('bb84_result', (data) => {
-      setIsEncrypting(true);
-    });
-
-    s.on('eve_intercepting', (data) => {
-      setMessages(prev => [...prev, {
-        type: 'eve_intercept',
-        sender: data.sender,
-        qubitsIntercepted: data.qubits_intercepted,
-        qubitsCorrectBasis: data.qubits_correct_basis,
-        garbledPreview: data.garbled_preview,
-        qber: data.qber,
-      }]);
-    });
-
-    s.on('message_delivered', (data) => {
-      setIsEncrypting(false);
-      setMessages(prev => [...prev, {
-        type: 'message',
-        sender: data.sender,
-        text: data.message,
-        cipher: data.cipher_text,
-        timestamp: data.timestamp,
-      }]);
-    });
-
-    s.on('message_blocked', (data) => {
-      setIsEncrypting(false);
-      setMessages(prev => [...prev, {
-        type: 'blocked',
-        sender: data.sender,
-        reason: data.reason,
-        eveSaw: data.eve_saw,
-      }]);
-    });
-
-    s.on('error', (data) => {
-      setError(data.message);
-      setIsEncrypting(false);
-    });
-
+    // Leave room on unmount
     return () => {
-      s.disconnect();
+      cancelled = true;
+      fetch(`${BACKEND_URL}/leave-room`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ room_id: roomId, user_id: userId }),
+      }).catch(() => {});
     };
+  }, [roomId, userId]);
+
+  // Poll for messages
+  const pollMessages = useCallback(async () => {
+    try {
+      const res = await fetch(
+        `${BACKEND_URL}/room-messages/${roomId}?since=${msgIndexRef.current}`,
+        { headers: { 'ngrok-skip-browser-warning': 'true' } }
+      );
+      if (!res.ok) return;
+
+      const data = await res.json();
+      if (data.messages && data.messages.length > 0) {
+        const newMsgs = [];
+        for (const msg of data.messages) {
+          if (msg.type === 'user_connected') {
+            newMsgs.push({ type: 'system', text: `${msg.role} has joined the chat` });
+            setUserCount(msg.user_count);
+          } else if (msg.type === 'user_disconnected') {
+            newMsgs.push({ type: 'system', text: `${msg.role} has left the chat` });
+            setUserCount(msg.user_count);
+          } else if (msg.type === 'eve_intercepting') {
+            newMsgs.push({
+              type: 'eve_intercept',
+              sender: msg.sender,
+              qubitsIntercepted: msg.qubits_intercepted,
+              qubitsCorrectBasis: msg.qubits_correct_basis,
+              garbledPreview: msg.garbled_preview,
+              qber: msg.qber,
+            });
+          } else if (msg.type === 'message_delivered') {
+            setIsEncrypting(false);
+            newMsgs.push({
+              type: 'message',
+              sender: msg.sender,
+              text: msg.message,
+              cipher: msg.cipher_text,
+              timestamp: msg.timestamp,
+            });
+          } else if (msg.type === 'message_blocked') {
+            setIsEncrypting(false);
+            newMsgs.push({
+              type: 'blocked',
+              sender: msg.sender,
+              reason: msg.reason,
+              eveSaw: msg.eve_saw,
+            });
+          }
+          // Ignore bb84_result and encryption_result (desktop-only)
+        }
+        if (newMsgs.length > 0) {
+          setMessages(prev => [...prev, ...newMsgs]);
+        }
+        msgIndexRef.current = data.total;
+      }
+      // Update user count from the polling response
+      if (data.user_count !== undefined) {
+        setUserCount(data.user_count);
+      }
+    } catch (err) {
+      // Silently ignore poll errors
+    }
   }, [roomId]);
 
-  const handleSend = () => {
-    if (!inputText.trim() || !socket || isEncrypting) return;
+  // Start polling when connected
+  useEffect(() => {
+    if (!connected) return;
+
+    pollRef.current = setInterval(pollMessages, 1500);
+    return () => clearInterval(pollRef.current);
+  }, [connected, pollMessages]);
+
+  const handleSend = async () => {
+    if (!inputText.trim() || isEncrypting) return;
     const msg = inputText.trim();
     setInputText('');
     setIsEncrypting(true);
-    socket.emit('send_message', {
-      room_id: roomId,
-      message: msg,
-    });
+
+    try {
+      const res = await fetch(`${BACKEND_URL}/send-message`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'ngrok-skip-browser-warning': 'true',
+        },
+        body: JSON.stringify({
+          room_id: roomId,
+          user_id: userId,
+          message: msg,
+        }),
+      });
+
+      if (!res.ok) {
+        const data = await res.json();
+        setError(data.error || 'Failed to send message');
+        setIsEncrypting(false);
+      }
+      // Message results will come through polling
+    } catch (err) {
+      console.error('[Mobile] Send failed:', err);
+      setIsEncrypting(false);
+      setError('Failed to send message. Check your connection.');
+    }
   };
 
   const handleKeyPress = (e) => {
@@ -148,44 +191,25 @@ export default function MobileChat() {
 
   // Error State
   if (error) {
-    const COMMAND = `netsh advfirewall firewall add rule name="Flask 5000" dir=in action=allow protocol=TCP localport=5000`;
     return (
       <div className="mchat-container">
         <div className="mchat-error">
           <div style={{ fontSize: '3rem', marginBottom: '15px' }}>❌</div>
-          <h2 style={{ marginBottom: '10px' }}>Backend Unreachable</h2>
+          <h2 style={{ marginBottom: '10px' }}>Connection Error</h2>
           <p style={{ fontSize: '0.85rem', color: '#94a3b8', marginBottom: '14px' }}>
-            Cannot connect to <code style={{ color: '#f59e0b', background: '#1e293b', padding: '2px 6px', borderRadius: '4px' }}>{BACKEND_URL}</code>
+            {error}
           </p>
-          <div style={{
-            background: '#1e293b', border: '1px solid #ef444440', borderRadius: '10px',
-            padding: '14px 16px', marginBottom: '14px', textAlign: 'left',
-          }}>
-            <div style={{ fontSize: '0.8rem', color: '#f87171', fontWeight: 700, marginBottom: '6px' }}>
-              🔥 Likely Cause: Windows Firewall is blocking port 5000
-            </div>
-            <div style={{ fontSize: '0.78rem', color: '#94a3b8' }}>
-              Port 5173 (React app) is open, but port 5000 (Flask backend) is blocked — that's why the page loads but the connection times out.
-            </div>
-          </div>
-          <div style={{
-            background: '#0f172a', border: '1px solid #334155', borderRadius: '10px',
-            padding: '14px 16px', textAlign: 'left',
-          }}>
-            <div style={{ fontSize: '0.78rem', color: '#22c55e', fontWeight: 700, marginBottom: '8px' }}>
-              ✅ Fix — Run this in PowerShell as Administrator on the PC:
-            </div>
-            <code style={{
-              display: 'block', fontSize: '0.7rem', color: '#38bdf8',
-              wordBreak: 'break-all', lineHeight: '1.5',
-              background: '#1e293b', padding: '10px', borderRadius: '6px',
-            }}>
-              {COMMAND}
-            </code>
-            <div style={{ fontSize: '0.72rem', color: '#64748b', marginTop: '10px' }}>
-              Then restart the Flask server and scan the QR code again.
-            </div>
-          </div>
+          <button
+            onClick={() => { setError(null); window.location.reload(); }}
+            style={{
+              background: 'linear-gradient(135deg, #6366f1, #818cf8)',
+              color: '#fff', border: 'none', padding: '10px 24px',
+              borderRadius: '8px', fontSize: '0.9rem', cursor: 'pointer',
+              marginTop: '15px',
+            }}
+          >
+            🔄 Retry
+          </button>
         </div>
       </div>
     );
@@ -257,7 +281,6 @@ export default function MobileChat() {
           }
 
           if (msg.type === 'eve_intercept') {
-            // Build a repeating qubit stream pattern for animation
             const qubits = Array.from({ length: 40 }, (_, i) =>
               Math.random() > 0.45 ? 'intercept' : 'pass'
             );

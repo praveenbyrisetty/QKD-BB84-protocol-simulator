@@ -1,5 +1,4 @@
-import React, { useState, useRef, useEffect } from 'react';
-import { io } from 'socket.io-client';
+import React, { useState, useRef, useEffect, useCallback } from 'react';
 import './index.css'; 
 
 // Components
@@ -25,11 +24,15 @@ import HandGestureControl from './Hack/HandGestureControl';
 
 const BACKEND_URL = ''; // Uses Vite proxy — all requests go through port 5173
 
+function generateDesktopId() {
+  return 'desk_' + Math.random().toString(36).substr(2, 9);
+}
+
 function App() {
   // --- MODE ---
   const [mode, setMode] = useState('landing'); // 'landing' | 'solo' | 'qr-chat'
   const [chatRoomId, setChatRoomId] = useState(null);
-  const [chatSocket, setChatSocket] = useState(null);
+  const [desktopUserId] = useState(() => generateDesktopId());
   const [chatMessages, setChatMessages] = useState([]);
 
   // --- STATE ---
@@ -66,95 +69,118 @@ function App() {
   // 3D Photon modal state — null = closed, qubit object = open
   const [photon3D, setPhoton3D] = useState(null);
 
-  // --- SOCKET.IO FOR QR CHAT MODE ---
+  // --- REST POLLING FOR QR CHAT MODE ---
+  const deskMsgIndexRef = useRef(0);
+
+  const processChatMessages = useCallback((messages) => {
+    for (const msg of messages) {
+      if (msg.type === 'bb84_result') {
+        console.log('[Desktop] BB84 result received for message:', msg.message);
+        setChatCurrentMessage(msg.message);
+        setChatSender(msg.sender);
+        if (msg.num_qubits) setNumBits(msg.num_qubits);
+
+        const bb84 = msg.bb84_data;
+        setBackendData(bb84);
+
+        const uiQubits = bb84.alice_bits.map((bit, i) => ({
+          id: i,
+          aliceBit: bit,
+          aliceBasis: bb84.alice_bases[i],
+          bobBasis: bb84.bob_bases[i],
+          bobBit: bb84.bob_results[i],
+        }));
+
+        setQubits(uiQubits);
+        setStep(1);
+
+        setTimeout(() => {
+          setErrorRate(bb84.qber * 100);
+          setStep(2);
+        }, 4000);
+
+        setTimeout(() => {
+          if (bb84.aborted) setIsAborted(true);
+          setCorrectedKey(bb84.alice_key ? bb84.alice_key.join('') : "");
+          setStep(3);
+        }, 8000);
+
+        setTimeout(() => {
+          if (!bb84.aborted) {
+            setFinalKey(bb84.final_key.join(''));
+            setStep(4);
+          }
+        }, 12000);
+
+      } else if (msg.type === 'eve_intercepting') {
+        setEveOverlayData(msg);
+
+      } else if (msg.type === 'encryption_result') {
+        setChatCipher(msg.cipher_text || '');
+        setChatDecrypted(msg.decrypted_message || '');
+
+      } else if (msg.type === 'message_delivered') {
+        setChatMessages(prev => [...prev, {
+          type: 'delivered',
+          sender: msg.sender,
+          message: msg.message,
+          cipher: msg.cipher_text,
+        }]);
+
+      } else if (msg.type === 'message_blocked') {
+        setChatMessages(prev => [...prev, {
+          type: 'blocked',
+          sender: msg.sender,
+          reason: msg.reason,
+          eveSaw: msg.eve_saw,
+        }]);
+
+      } else if (msg.type === 'user_connected') {
+        console.log(`[Desktop] ${msg.role} connected (${msg.user_count}/2)`);
+      }
+    }
+  }, []);
+
   useEffect(() => {
     if (mode !== 'qr-chat' || !chatRoomId) return;
 
-    const s = io(BACKEND_URL, { transports: ['polling'] });
-    setChatSocket(s);
+    let cancelled = false;
 
-    s.on('connect', () => {
-      console.log('[Desktop] Connected to backend socket');
-      s.emit('join_room', { room_id: chatRoomId, type: 'desktop' });
-    });
+    // Join room as desktop observer
+    fetch(`${BACKEND_URL}/join-room`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ room_id: chatRoomId, user_id: desktopUserId, type: 'desktop' }),
+    }).then(res => res.json()).then(data => {
+      console.log('[Desktop] Joined room as observer:', data);
+    }).catch(err => console.error('[Desktop] Join failed:', err));
 
-    // When a mobile user sends a message, BB84 runs and we get results
-    s.on('bb84_result', (data) => {
-      console.log('[Desktop] BB84 result received for message:', data.message);
-      setChatCurrentMessage(data.message);
-      setChatSender(data.sender);
-      if (data.num_qubits) setNumBits(data.num_qubits);
-      
-      // Populate BB84 data and animate through the steps
-      const bb84 = data.bb84_data;
-      setBackendData(bb84);
-      
-      const uiQubits = bb84.alice_bits.map((bit, i) => ({
-        id: i,
-        aliceBit: bit,
-        aliceBasis: bb84.alice_bases[i],
-        bobBasis: bb84.bob_bases[i],
-        bobBit: bb84.bob_results[i],
-      }));
-      
-      setQubits(uiQubits);
-      setStep(1);
-
-      // Auto-advance through steps with slower delays for visualization
-      setTimeout(() => {
-        setErrorRate(bb84.qber * 100);
-        setStep(2);
-      }, 4000);
-
-      setTimeout(() => {
-        if (bb84.aborted) setIsAborted(true);
-        setCorrectedKey(bb84.alice_key ? bb84.alice_key.join('') : "");
-        setStep(3);
-      }, 8000);
-
-      setTimeout(() => {
-        if (!bb84.aborted) {
-          setFinalKey(bb84.final_key.join(''));
-          setStep(4);
+    // Poll for messages
+    const pollInterval = setInterval(async () => {
+      if (cancelled) return;
+      try {
+        const res = await fetch(`${BACKEND_URL}/room-messages/${chatRoomId}?since=${deskMsgIndexRef.current}`);
+        if (!res.ok) return;
+        const data = await res.json();
+        if (data.messages && data.messages.length > 0) {
+          processChatMessages(data.messages);
+          deskMsgIndexRef.current = data.total;
         }
-      }, 12000);
-    });
-
-    s.on('eve_intercepting', (data) => {
-      setEveOverlayData(data);
-    });
-
-    s.on('encryption_result', (data) => {
-      setChatCipher(data.cipher_text || '');
-      setChatDecrypted(data.decrypted_message || '');
-    });
-
-    s.on('message_delivered', (data) => {
-      setChatMessages(prev => [...prev, {
-        type: 'delivered',
-        sender: data.sender,
-        message: data.message,
-        cipher: data.cipher_text,
-      }]);
-    });
-
-    s.on('message_blocked', (data) => {
-      setChatMessages(prev => [...prev, {
-        type: 'blocked',
-        sender: data.sender,
-        reason: data.reason,
-        eveSaw: data.eve_saw,
-      }]);
-    });
-
-    s.on('user_connected', (data) => {
-      console.log(`[Desktop] ${data.role} connected (${data.user_count}/2)`);
-    });
+      } catch (err) {
+        // Silently ignore poll errors
+      }
+    }, 1500);
 
     return () => {
-      s.disconnect();
+      cancelled = true;
+      clearInterval(pollInterval);
+      fetch(`${BACKEND_URL}/leave-room`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ room_id: chatRoomId, user_id: desktopUserId }),
+      }).catch(() => {});
     };
-  }, [mode, chatRoomId]);
+  }, [mode, chatRoomId, desktopUserId, processChatMessages]);
 
   // --- LANDING HANDLERS ---
   const handleStartSolo = (eveEnabled) => {
