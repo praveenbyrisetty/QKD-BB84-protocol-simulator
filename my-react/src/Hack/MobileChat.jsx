@@ -60,9 +60,13 @@ export default function MobileChat() {
       } catch (err) {
         if (cancelled) return;
         console.error('[Mobile] Join failed:', err);
-        setError(
-          `Cannot reach backend.\n\nMake sure both the Flask server (port 5000) and Vite dev server (port 5173) are running, and ngrok is tunneling port 5173.`
-        );
+        if (err.message === 'Room not found') {
+          setError('This QR code has expired or the server was restarted. Please click "Generate QR Code" on your computer to create a new one and scan it again.');
+        } else {
+          setError(
+            `Error: ${err.message}\n\nCannot reach backend. Make sure the Flask server (port 5000), Vite server (port 5173), and ngrok are running correctly.`
+          );
+        }
       }
     }
 
@@ -71,11 +75,11 @@ export default function MobileChat() {
     // Leave room on unmount
     return () => {
       cancelled = true;
-      fetch(`${BACKEND_URL}/leave-room`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ room_id: roomId, user_id: userId }),
-      }).catch(() => {});
+      // fetch(`${BACKEND_URL}/leave-room`, {
+      //   method: 'POST',
+      //   headers: { 'Content-Type': 'application/json' },
+      //   body: JSON.stringify({ room_id: roomId, user_id: userId }),
+      // }).catch(() => {});
     };
   }, [roomId, userId]);
 

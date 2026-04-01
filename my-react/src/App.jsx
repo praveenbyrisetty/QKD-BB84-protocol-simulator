@@ -18,7 +18,6 @@ import CascadeExpanded from './Hack/CascadeExpanded';
 import PrivacyAmpExpanded from './Hack/PrivacyAmpExpanded';
 import EncryptionExpanded from './Hack/EncryptionExpanded';
 import QRLanding from './Hack/QRLanding';
-import EveOverlay from './Hack/EveOverlay';
 import Photon3DModal from './Hack/Photon3DModal';
 import HandGestureControl from './Hack/HandGestureControl';
 
@@ -63,8 +62,6 @@ function App() {
   const [chatCipher, setChatCipher] = useState('');
   const [chatDecrypted, setChatDecrypted] = useState('');
   
-  // Eve overlay state
-  const [eveOverlayData, setEveOverlayData] = useState(null);
 
   // 3D Photon modal state — null = closed, qubit object = open
   const [photon3D, setPhoton3D] = useState(null);
@@ -111,9 +108,6 @@ function App() {
             setStep(4);
           }
         }, 12000);
-
-      } else if (msg.type === 'eve_intercepting') {
-        setEveOverlayData(msg);
 
       } else if (msg.type === 'encryption_result') {
         setChatCipher(msg.cipher_text || '');
@@ -205,19 +199,6 @@ function App() {
       console.log('Backend response:', data);
       setBackendData(data);
 
-      // Trigger the Eve overlay if Eve was active
-      if (isEveOn && data.eve_bases) {
-        const eveMatched = data.eve_bases.filter((b, i) => b === data.alice_bases[i]).length;
-        const garbled = Array.from({ length: 8 }, () =>
-          '0123456789ABCDEF'[Math.floor(Math.random() * 16)]
-        ).join('');
-        setEveOverlayData({
-          qubits_intercepted: numBits,
-          qubits_correct_basis: eveMatched,
-          garbled_preview: garbled,
-          qber: data.qber,
-        });
-      }
 
       const uiQubits = data.alice_bits.map((bit, i) => ({ id: i, aliceBit: bit, aliceBasis: data.alice_bases[i], bobBasis: data.bob_bases[i], bobBit: data.bob_results[i], }));
       setTimeout(() => { setQubits(uiQubits); setStep(1); setIsLoading(false); console.log('Step set to 1'); }, 1000);
@@ -540,13 +521,6 @@ function App() {
         </div>
       )}
       
-      {/* EVE INTERCEPTION OVERLAY */}
-      {eveOverlayData && (
-        <EveOverlay
-          eveData={eveOverlayData}
-          onDismiss={() => setEveOverlayData(null)}
-        />
-      )}
 
       {/* 3D PHOTON VISUALIZATION MODAL */}
       {photon3D && (

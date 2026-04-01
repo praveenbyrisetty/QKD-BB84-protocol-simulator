@@ -23,16 +23,16 @@ export default defineConfig({
     allowedHosts: true, // Allow ngrok and all external hosts
     proxy: {
       // Proxy API routes to Flask backend
-      '/bb84': { target: 'http://localhost:5000', changeOrigin: true },
-      '/encrypt': { target: 'http://localhost:5000', changeOrigin: true },
-      '/decrypt': { target: 'http://localhost:5000', changeOrigin: true },
-      '/create-room': { target: 'http://localhost:5000', changeOrigin: true },
-      '/room-status': { target: 'http://localhost:5000', changeOrigin: true },
-      '/join-room': { target: 'http://localhost:5000', changeOrigin: true },
-      '/leave-room': { target: 'http://localhost:5000', changeOrigin: true },
-      '/send-message': { target: 'http://localhost:5000', changeOrigin: true },
-      '/room-messages': { target: 'http://localhost:5000', changeOrigin: true },
-      '/heartbeat': { target: 'http://localhost:5000', changeOrigin: true },
+      '/bb84': { target: 'http://127.0.0.1:5000', changeOrigin: true },
+      '/encrypt': { target: 'http://127.0.0.1:5000', changeOrigin: true },
+      '/decrypt': { target: 'http://127.0.0.1:5000', changeOrigin: true },
+      '/create-room': { target: 'http://127.0.0.1:5000', changeOrigin: true },
+      '/room-status': { target: 'http://127.0.0.1:5000', changeOrigin: true },
+      '/join-room': { target: 'http://127.0.0.1:5000', changeOrigin: true },
+      '/leave-room': { target: 'http://127.0.0.1:5000', changeOrigin: true },
+      '/send-message': { target: 'http://127.0.0.1:5000', changeOrigin: true },
+      '/room-messages': { target: 'http://127.0.0.1:5000', changeOrigin: true },
+      '/heartbeat': { target: 'http://127.0.0.1:5000', changeOrigin: true },
     },
   }
 })

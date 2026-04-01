@@ -339,9 +339,9 @@ def leave_room():
             print(f"[REST] {role} left room {room_id}")
 
         # Clean up empty rooms
-        if len(room["users"]) == 0:
-            del rooms[room_id]
-            print(f"[REST] Room {room_id} deleted (empty)")
+        # if len(room["users"]) == 0:
+        #     del rooms[room_id]
+        #     print(f"[REST] Room {room_id} deleted (empty)")
 
     return jsonify({"ok": True})
 

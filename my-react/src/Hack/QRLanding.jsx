@@ -17,6 +17,15 @@ export default function QRLanding({ onStartSolo, onStartChat }) {
     const interval = setInterval(async () => {
       try {
         const res = await fetch(`/room-status/${roomId}`);
+        if (!res.ok) {
+          if (res.status === 404) {
+            setRoomId(null);
+            setQrOn(false);
+            setUserCount(0);
+            alert("The current chat room has expired or the server was restarted. Please generate a new QR code.");
+          }
+          return;
+        }
         const data = await res.json();
         setUserCount(data.user_count || 0);
       } catch (e) { /* ignore */ }
