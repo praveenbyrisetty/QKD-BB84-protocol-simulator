@@ -13,8 +13,23 @@ import threading
 from qiskit import QuantumCircuit
 from qiskit_aer import AerSimulator
 
-app = Flask(__name__)
+import os
+
+app = Flask(__name__, static_folder="../my-react/dist", static_url_path="/")
 CORS(app, resources={r"/*": {"origins": "*"}})
+
+# --- STATIC SITE HOSTING ---
+@app.route("/")
+def index():
+    if os.path.exists(os.path.join(app.static_folder, "index.html")):
+        return app.send_static_file("index.html")
+    return "Frontend build not found. Please run 'npm run build' inside my-react folder.", 404
+
+@app.errorhandler(404)
+def not_found(e):
+    if os.path.exists(os.path.join(app.static_folder, "index.html")):
+        return app.send_static_file("index.html")
+    return jsonify({"error": "Not Found"}), 404
 
 simulator = AerSimulator()
 
