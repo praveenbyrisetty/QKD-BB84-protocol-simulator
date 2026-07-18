@@ -1,6 +1,8 @@
 import React, { useState, useEffect } from 'react';
 import { QRCodeSVG } from 'qrcode.react';
 
+const BACKEND_URL = import.meta.env.VITE_API_URL || '';
+
 export default function QRLanding({ onStartSolo, onStartChat }) {
   const [eveOn, setEveOn] = useState(false);
   const [qrOn, setQrOn] = useState(false);
@@ -16,7 +18,7 @@ export default function QRLanding({ onStartSolo, onStartChat }) {
     if (!roomId) return;
     const interval = setInterval(async () => {
       try {
-        const res = await fetch(`/room-status/${roomId}`);
+        const res = await fetch(`${BACKEND_URL}/room-status/${roomId}`);
         if (!res.ok) {
           if (res.status === 404) {
             setRoomId(null);
@@ -36,7 +38,7 @@ export default function QRLanding({ onStartSolo, onStartChat }) {
   const handleCreateRoom = async () => {
     setIsCreating(true);
     try {
-      const res = await fetch(`/create-room`, {
+      const res = await fetch(`${BACKEND_URL}/create-room`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ eve: eveOn, numBits: numBits }),

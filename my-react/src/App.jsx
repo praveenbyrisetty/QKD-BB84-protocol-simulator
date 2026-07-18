@@ -21,7 +21,7 @@ import QRLanding from './Hack/QRLanding';
 import Photon3DModal from './Hack/Photon3DModal';
 import HandGestureControl from './Hack/HandGestureControl';
 
-const BACKEND_URL = ''; // Uses Vite proxy — all requests go through port 5173
+const BACKEND_URL = import.meta.env.VITE_API_URL || ''; // Uses Vite proxy in development
 
 function generateDesktopId() {
   return 'desk_' + Math.random().toString(36).substr(2, 9);

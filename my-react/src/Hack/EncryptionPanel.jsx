@@ -18,8 +18,8 @@ export default function EncryptionPanel({ finalKey }) {
     setCipherText("");
 
     try {
-      const backendHost = window.location.hostname;
-      const response = await fetch(`http://${backendHost}:5000/encrypt`, {
+      const apiBase = import.meta.env.VITE_API_URL || `http://${window.location.hostname}:5000`;
+      const response = await fetch(`${apiBase}/encrypt`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ message: msgInput, key: finalKey })
@@ -41,8 +41,8 @@ export default function EncryptionPanel({ finalKey }) {
     if (!cipherText || !finalKey) return;
 
     try {
-      const backendHost = window.location.hostname;
-      const response = await fetch(`http://${backendHost}:5000/decrypt`, {
+      const apiBase = import.meta.env.VITE_API_URL || `http://${window.location.hostname}:5000`;
+      const response = await fetch(`${apiBase}/decrypt`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ cipherText: cipherText, key: finalKey })

@@ -3,7 +3,7 @@ import { useParams } from 'react-router-dom';
 import './MobileChat.css';
 
 // Detect backend URL: use the current origin (works with ngrok and Vite proxy)
-const BACKEND_URL = '';
+const BACKEND_URL = import.meta.env.VITE_API_URL || '';
 
 function generateUserId() {
   return 'mob_' + Math.random().toString(36).substr(2, 9);
